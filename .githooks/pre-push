@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+root="$(git rev-parse --show-toplevel)"
+
+cd "$root/backend"
+go test ./...
+go vet ./...
+
+cd "$root/frontend"
+npm ci
+npm run build
+npm audit --audit-level=high

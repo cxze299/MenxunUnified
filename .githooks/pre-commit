@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+blocked="$(git diff --cached --name-only --diff-filter=ACMR | grep -Ei '(^|/)(\.env($|\.)|id_rsa|id_ed25519)|\.(pem|key|p12|pfx)$' | grep -Ev '(^|/)\.env\.example$' || true)"
+if [ -n "$blocked" ]; then
+  echo "Commit blocked: sensitive file names are staged:" >&2
+  echo "$blocked" >&2
+  exit 1
+fi
+
+git diff --cached --check
+
+git diff --cached --name-only --diff-filter=ACMR -z | while IFS= read -r -d '' path; do
+  size="$(git cat-file -s ":$path" 2>/dev/null || echo 0)"
+  if [ "$size" -gt 20971520 ]; then
+    echo "Commit blocked: $path is larger than 20 MB. Store large runtime assets outside Git." >&2
+    exit 1
+  fi
+done

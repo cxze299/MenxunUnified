@@ -1,0 +1,79 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: menxun-unified-db
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=128M
+      - --max-connections=50
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-menxun}
+      MYSQL_USER: ${MYSQL_USER:-menxun}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set in .env}
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:${AGP_MYSQL_PORT:-3308}:3306"
+    volumes:
+      - ../data/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$${MYSQL_PASSWORD}\" mysql --protocol=TCP -h 127.0.0.1 -u\"$${MYSQL_USER}\" \"$${MYSQL_DATABASE}\" -Nse 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    mem_limit: 320m
+
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: menxun-unified-api
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      AGP_ADDR: ":8080"
+      AGP_DSN: "${MYSQL_USER:-menxun}:${MYSQL_PASSWORD:?MYSQL_PASSWORD must be set in .env}@tcp(mysql:3306)/${MYSQL_DATABASE:-menxun}?parseTime=true&multiStatements=false&charset=utf8mb4,utf8"
+      AGP_JWT_SECRET: "${AGP_JWT_SECRET:?AGP_JWT_SECRET must be set in .env}"
+      AGP_ASSETS_ROOT: "/data/menxun/assets"
+      AGP_CONTENT_ROOT: "/data/menxun/content"
+      AGP_MIGRATIONS_DIR: "/app/migrations"
+      AGP_ROSTER_PATH: "/data/menxun/roster/current.xlsx"
+      BOOTSTRAP_SUPERADMIN_USERNAME: "${BOOTSTRAP_SUPERADMIN_USERNAME:-admin}"
+      BOOTSTRAP_SUPERADMIN_PASSWORD: "${BOOTSTRAP_SUPERADMIN_PASSWORD:?BOOTSTRAP_SUPERADMIN_PASSWORD must be set in .env}"
+      BOOTSTRAP_SUPERADMIN_DISPLAY_NAME: "${BOOTSTRAP_SUPERADMIN_DISPLAY_NAME:-超级管理员}"
+    volumes:
+      - ../data:/data/menxun
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
+      interval: 10s
+      timeout: 4s
+      retries: 10
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    mem_limit: 128m
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    container_name: menxun-unified-web
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${AGP_WEB_PORT:-2980}:80"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    mem_limit: 64m
