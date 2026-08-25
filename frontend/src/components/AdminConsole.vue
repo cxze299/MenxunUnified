@@ -6,16 +6,16 @@ import AppDatePicker from './AppDatePicker.vue';
 import { useAppStateStore } from '../stores/appState';
 import { confirmDialog, promptDialog } from '../ui/dialog';
 import {
-  addWeekBinding, api, applyBindingSelection, applyOutlineSelection, createWeekDraft,
+  addWeekBinding, api, applyBindingSelection, applyOutlineSelection, createBlankWeekDraft, createWeekDraft,
   deleteWeekDraft, downloadAdminExport, importLocalBackupJSON, importStudyWeeksExcel,
   librarySelectionValue, loadAdminData, previewLibraryItem, removeMember, removeWeekBinding,
   reloadApp, saveWeekDraft, selectWeekForEditing,
-  setAdminSection, setMemberAdmin, setResourceLibraryVisibility, toast, updateWeekBinding,
+  saveLearningConfig, setAdminSection, setMemberAdmin, setResourceLibraryVisibility, switchGroup, toast, updateLearningValue, updateWeekBinding,
   updateWeekDraftField, uploadLibraryFile,
 } from '../legacy-app';
 
 const store = useAppStateStore();
-const { user, adminSection, members, weeks, weekDraft, resourceLibrary, canEditLearning, adminLoading, groups, currentGroupID } = storeToRefs(store);
+const { user, adminSection, members, weeks, weekDraft, learningConfig, resourceLibrary, canEditLearning, adminLoading, groups, currentGroupID } = storeToRefs(store);
 
 const uploadInput = ref(null);
 const uploadCategory = ref('book');
@@ -38,7 +38,11 @@ const newFolderName = ref('');
 const resourceSearch = ref('');
 const rosterSearch = ref('');
 const pendingAction = ref('');
+const newGroupCode = ref('');
+const newGroupName = ref('');
+const newGroupDescription = ref('');
 const taskPreviewOpen = ref(false);
+const plannerStep = ref(1);
 const adminNav = ref(null);
 let adminNavMobileQuery = null;
 
@@ -53,11 +57,41 @@ const visibleLibraryItems = computed(() => {
   if (!keyword) return items;
   return items.filter((item) => normalizedName(`${item.title || ''} ${item.original_name || ''} ${item.relative_path || ''} ${item.folder || ''}`).includes(keyword));
 });
-const currentWeek = computed(() => weeks.value.find((week) => weekStatus(week) === '进行中') || weeks.value[0]);
+const currentWeek = computed(() => weeks.value.find((week) => week.publication_status === 'published' && weekStatus(week) === '进行中') || weeks.value.find((week) => week.publication_status === 'published'));
 const completedProfiles = computed(() => members.value.filter((item) => item.username).length);
 const pendingRegistrationCount = computed(() => registrationRequests.value.filter((item) => item.status === 'pending').length);
 const activeGroupName = computed(() => groups.value.find((group) => Number(group.id) === Number(currentGroupID.value))?.name || '当前小组');
 const isReadOnlyAdmin = computed(() => !canEditLearning.value);
+const dailySettings = computed(() => learningConfig.value?.task_sections?.daily || {});
+const dailyDevotion = computed(() => dailySettings.value.devotion || {});
+const dailyScripture = computed(() => dailySettings.value.scripture || {});
+const shareSettings = computed(() => learningConfig.value?.task_sections?.share || {});
+const taskProgress = computed(() => {
+  const draft = weekDraft.value || {};
+  const items = [
+    dailyDevotion.value.enabled === false || Boolean(dailyDevotion.value.title || dailyDevotion.value.path),
+    dailyScripture.value.enabled === false || Boolean(dailyScripture.value.label || dailyScripture.value.book),
+    draft.book_enabled === false || Boolean((draft.readings || []).some((item) => item.title || item.url || item.asset_id)),
+    draft.video_enabled === false || Boolean((draft.videos || []).some((item) => item.title || item.url || item.asset_id)),
+    draft.verse_enabled === false || Boolean(draft.verse_ref && draft.recite_text),
+    draft.outline_enabled === false || Boolean(draft.outline?.title || draft.outline?.url || draft.outline?.asset_id),
+    shareSettings.value.enabled === false || Boolean(shareSettings.value.label),
+  ];
+  return { done: items.filter(Boolean).length, total: items.length };
+});
+const publishErrors = computed(() => {
+  const errors = [];
+  const draft = weekDraft.value || {};
+  const dateError = validateWeekDates();
+  if (dateError) errors.push(dateError);
+  if (!String(draft.title || '').trim()) errors.push('请填写本周主题');
+  if (draft.book_enabled !== false && !(draft.readings || []).some((item) => item.title || item.url || item.asset_id)) errors.push('周读物已开启，请添加至少一项内容');
+  if (draft.video_enabled !== false && !(draft.videos || []).some((item) => item.title || item.url || item.asset_id)) errors.push('本周视频已开启，请添加至少一项内容');
+  if (draft.verse_enabled !== false && !String(draft.verse_ref || '').trim()) errors.push('背经已开启，请填写经文范围');
+  if (draft.verse_enabled !== false && !String(draft.recite_text || '').trim()) errors.push('背经已开启，请填写经文原文');
+  if (draft.outline_enabled !== false && !(draft.outline?.title || draft.outline?.url || draft.outline?.asset_id)) errors.push('提纲已开启，请选择或上传图片');
+  return errors;
+});
 const canManageResources = computed(() => Boolean(user.value?.is_super_admin || user.value?.roles?.some((role) => ['group_admin', 'group_leader'].includes(role))));
 const resourceTargetWeek = computed(() => {
   if (!weekDraft.value) return null;
@@ -91,6 +125,7 @@ watch(activeLibrarySection, (section) => {
 watch(adminSection, () => centerActiveAdminSection());
 
 const sections = computed(() => [
+  ...(user.value?.is_super_admin ? [{ id: 'groups', label: `小组管理 (${groups.value.length})`, icon: 'users' }] : []),
   { id: 'overview', label: '管理概览', icon: 'chart' },
   { id: 'learning', label: '本周任务', icon: 'calendar' },
   { id: 'approvals', label: `注册审批${pendingRegistrationCount.value ? ` (${pendingRegistrationCount.value})` : ''}`, icon: 'check' },
@@ -155,17 +190,65 @@ function validateWeekDates() {
   return '';
 }
 
-async function saveWeekWithValidation() {
+async function saveWeek(status) {
   if (!canEditLearning.value) return toast('当前账号只有任务只读权限');
-  const error = validateWeekDates();
-  if (error) return toast(error);
-  await withPending('save-week', saveWeekDraft);
+  const dateError = validateWeekDates();
+  if (dateError) return toast(dateError);
+  if (status === 'published' && publishErrors.value.length) return toast(publishErrors.value[0]);
+  if (status === 'published' && weekDraft.value?.publication_status === 'published') {
+    const confirmed = await confirmDialog({ title: '确认更新已发布任务', message: '成员会立即看到本次修改，历史打卡记录不会改变。确认重新发布吗？', confirmLabel: '确认发布' });
+    if (!confirmed) return;
+  }
+  await withPending(`save-week-${status}`, async () => {
+    await saveLearningConfig();
+    await saveWeekDraft(status);
+    taskPreviewOpen.value = false;
+    plannerStep.value = status === 'published' ? 3 : 2;
+  });
 }
 
 function previewWeekDraft() {
-  const error = validateWeekDates();
-  if (error) return toast(error);
+  if (publishErrors.value.length) return toast(publishErrors.value[0]);
   taskPreviewOpen.value = true;
+  plannerStep.value = 3;
+}
+
+function prepareNextWeek(blank = false) {
+  if (blank) createBlankWeekDraft(); else createWeekDraft();
+  taskPreviewOpen.value = false;
+  plannerStep.value = 1;
+}
+
+function chooseWeek(weekID) {
+  selectWeekForEditing(weekID);
+  taskPreviewOpen.value = false;
+  plannerStep.value = 1;
+}
+
+async function uploadTaskFile(kind, index, event) {
+  const file = event.target.files?.[0];
+  if (!file || !canEditLearning.value) return;
+  const key = `task-upload-${kind}-${index}`;
+  await withPending(key, async () => {
+    const form = new FormData();
+    form.append('category', kind === 'readings' ? 'book' : kind === 'videos' ? 'video' : 'outline');
+    form.append('file', file);
+    try {
+      const result = await api('/admin/assets/upload', { method: 'POST', body: form, timeout: 15 * 60 * 1000 });
+      const asset = result.asset;
+      if (kind === 'outline') {
+        updateWeekDraftField('outline', { title: asset.title || asset.original_name, url: '', type: 'image', asset_id: Number(asset.id) });
+      } else {
+        updateWeekBinding(kind, index, 'title', asset.title || asset.original_name || '学习资料');
+        updateWeekBinding(kind, index, 'url', '');
+        updateWeekBinding(kind, index, 'asset_id', Number(asset.id));
+        updateWeekBinding(kind, index, 'type', kind === 'videos' ? 'video' : 'pdf');
+      }
+      await loadAdminData(true, true);
+      toast('文件已上传并挂载到当前任务');
+    } catch (error) { toast(`上传失败：${error.message}`); }
+    finally { event.target.value = ''; }
+  });
 }
 
 async function deleteWeekWithPending() {
@@ -188,6 +271,22 @@ async function chooseSection(id) {
   if (id === 'overview') await loadAdminData();
   if (id === 'approvals') await loadRegistrationRequests();
   if (id === 'roster') await loadRoster();
+}
+
+async function createStudyGroup() {
+  const name = newGroupName.value.trim();
+  const code = newGroupCode.value.trim().toLowerCase();
+  if (!name || !/^[a-z0-9][a-z0-9-]{1,62}$/.test(code)) return toast('请填写小组名称；编码使用英文小写、数字或短横线');
+  await withPending('create-group', async () => {
+    try {
+      const result = await api('/super-admin/groups', { method: 'POST', body: JSON.stringify({ code, name, description: newGroupDescription.value.trim() }) });
+      newGroupCode.value = ''; newGroupName.value = ''; newGroupDescription.value = '';
+      await reloadApp();
+      await switchGroup(result.id);
+      setAdminSection('overview');
+      toast(`“${name}”已创建，现在可以导入名单和发布任务`);
+    } catch (error) { toast(`创建失败：${error.message}`); }
+  });
 }
 
 async function fetchRegistrationRequests() {
@@ -478,7 +577,8 @@ function selectResourceForTask(item) {
 }
 
 onMounted(() => {
-  if (!['overview','learning','approvals','members','library','roster','data'].includes(adminSection.value)) setAdminSection('overview');
+  if (user.value?.is_super_admin && !currentGroupID.value) setAdminSection('groups');
+  else if (!['groups','overview','learning','approvals','members','library','roster','data'].includes(adminSection.value)) setAdminSection('overview');
   fetchRegistrationRequests().catch(() => {});
   adminNavMobileQuery = window.matchMedia('(max-width: 900px)');
   if (adminNavMobileQuery.addEventListener) adminNavMobileQuery.addEventListener('change', handleAdminNavViewportChange);
@@ -506,9 +606,17 @@ onBeforeUnmount(() => {
     <main class="ios-admin-main">
       <div v-if="isReadOnlyAdmin && ['learning','library','data'].includes(adminSection)" class="ios-roster-match" role="status">
         <AppIcon name="lock" :size="18" />
-        <div><b>当前为小组管理员只读模式</b><small>可以查看资源、导出数据和管理成员；只有组长或超级管理员可以修改任务、上传资源或执行恢复。</small></div>
+        <div><b>当前账号为只读管理权限</b><small>请联系组长或超级管理员授予小组管理员权限后再修改任务。</small></div>
       </div>
       <div v-if="adminLoading && !['overview','members','roster','data'].includes(adminSection)" class="ios-loading">正在载入管理数据…</div>
+
+      <section v-else-if="adminSection === 'groups' && user?.is_super_admin" class="ios-admin-page">
+        <header class="ios-page-heading"><div><small>PLATFORM</small><h1>小组管理</h1><p>新增小组只需在这里创建，不再部署新的容器或网站。</p></div></header>
+        <div class="ios-panel-grid group-management-grid">
+          <article class="ios-panel"><div class="panel-heading"><div><h2>创建新小组</h2><small>创建后即可导入 Excel 名单并发布任务</small></div></div><div class="ios-stack"><label><span>小组名称</span><input v-model.trim="newGroupName" placeholder="例如：2026 生命季一组" /></label><label><span>小组编码</span><input v-model.trim="newGroupCode" placeholder="例如：life-2026-a" @keydown.enter.prevent="createStudyGroup" /></label><label><span>说明（选填）</span><textarea v-model.trim="newGroupDescription" rows="3" placeholder="成员能够理解的简短说明"></textarea></label><button :disabled="!newGroupName || !newGroupCode || !!pendingAction" type="button" @click="createStudyGroup">{{ isPending('create-group') ? '创建中…' : '创建并进入小组' }}</button></div></article>
+          <article class="ios-panel"><div class="panel-heading"><div><h2>现有小组</h2><small>共 {{ groups.length }} 个正常运行的小组</small></div></div><div v-if="groups.length" class="group-card-list"><button v-for="group in groups" :key="group.id" :class="{ active: Number(group.id) === Number(currentGroupID) }" type="button" @click="switchGroup(group.id)"><span class="member-avatar-fallback">{{ group.name.slice(0,1) }}</span><div><b>{{ group.name }}</b><small>{{ group.code }}</small></div><em>{{ Number(group.id) === Number(currentGroupID) ? '当前小组' : '进入管理' }}</em></button></div><div v-else class="ios-empty"><AppIcon name="users" :size="28" /><b>还没有小组</b><span>填写左侧三个字段即可创建第一个小组。</span></div></article>
+        </div>
+      </section>
 
       <section v-else-if="adminSection === 'overview'" class="ios-admin-page">
         <header class="ios-page-heading"><div><small>OVERVIEW</small><h1>管理概览</h1><p>今天需要关注的内容集中在这里。</p></div></header>
@@ -534,32 +642,49 @@ onBeforeUnmount(() => {
       </section>
 
       <section v-else-if="adminSection === 'learning'" class="ios-admin-page">
-        <header class="ios-page-heading heading-with-action"><div><small>THIS WEEK</small><h1>发布本周任务</h1><p>按顺序完成下面三步，成员就能看到本周内容。</p></div><button :disabled="!canEditLearning || !!pendingAction" type="button" @click="createWeekDraft"><AppIcon name="plus" :size="18" />准备下一周</button></header>
-        <div class="simple-planner-steps" aria-label="发布步骤"><span class="active"><b>1</b>选择周期</span><span :class="{ active: weekDraft?.start && weekDraft?.end }"><b>2</b>填写内容</span><span :class="{ active: weekDraft?.title }"><b>3</b>预览发布</span></div>
+        <header class="ios-page-heading heading-with-action"><div><small>THIS WEEK</small><h1>本周任务发布</h1><p>周期、内容、预览都在这里完成，不需要理解任务代码或资源路径。</p></div><button :disabled="!canEditLearning || !!pendingAction" type="button" @click="prepareNextWeek(false)"><AppIcon name="plus" :size="18" />复制到下一周</button></header>
+        <div class="planner-progress"><div><b>已完成 {{ taskProgress.done }}/{{ taskProgress.total }} 项</b><span>{{ weekDraft?.publication_status === 'published' ? '当前版本已发布' : '草稿不会显示给成员' }}</span></div><progress :value="taskProgress.done" :max="taskProgress.total"></progress></div>
+        <div class="simple-planner-steps" aria-label="发布步骤"><button :class="{ active: plannerStep === 1 }" type="button" @click="plannerStep = 1"><b>1</b>选择周期</button><button :class="{ active: plannerStep === 2 }" :disabled="!weekDraft?.start || !weekDraft?.end" type="button" @click="plannerStep = 2"><b>2</b>填写内容</button><button :class="{ active: plannerStep === 3 }" :disabled="publishErrors.length > 0" type="button" @click="previewWeekDraft"><b>3</b>预览发布</button></div>
         <div class="ios-planner-layout">
           <aside class="ios-week-list">
-            <div class="list-caption">已发布周次 · {{ weeks.length }}</div>
-            <button v-for="week in weeks" :key="week.id" :class="{ active: Number(weekDraft?.id) === Number(week.id) }" type="button" @click="selectWeekForEditing(week.id)"><span class="ios-status" :class="{ active: weekStatus(week) === '进行中' }">{{ weekStatus(week) }}</span><b>{{ week.title || '未命名周任务' }}</b><small>{{ week.start }} — {{ week.end }}</small></button>
-            <button v-if="!weeks.length" class="empty-week-button" :disabled="!canEditLearning" type="button" @click="createWeekDraft">＋ 创建第一周</button>
+            <div class="list-caption">周任务 · {{ weeks.length }}</div>
+            <button v-for="week in weeks" :key="week.id" :class="{ active: Number(weekDraft?.id) === Number(week.id) }" type="button" @click="chooseWeek(week.id)"><span class="ios-status" :class="{ active: week.publication_status === 'published' }">{{ week.publication_status === 'published' ? weekStatus(week) : '草稿' }}</span><b>{{ week.title || '未命名草稿' }}</b><small>{{ week.start }} — {{ week.end }}</small></button>
+            <button class="empty-week-button" :disabled="!canEditLearning" type="button" @click="prepareNextWeek(true)">＋ 使用空白周</button>
           </aside>
 
           <div class="ios-planner-content">
             <article v-if="weekDraft" class="ios-panel ios-week-editor">
-              <div class="panel-heading"><div><small>第 1 步</small><h2>选择周期</h2></div><span class="ios-info-chip">新建时已复制上一周</span></div>
-              <div class="ios-form-grid">
-                <label class="span-2"><span>任务名称</span><input :disabled="!canEditLearning" :value="weekDraft.title || ''" placeholder="例如：马可福音（上）" @change="updateWeekDraftField('title', $event.target.value)" /></label>
-                <label><span>开始日期</span><AppDatePicker :disabled="!canEditLearning" :model-value="weekDraft.start || ''" label="选择开始日期" @update:model-value="updateWeekDraftField('start', $event)" /></label>
-                <label><span>结束日期</span><AppDatePicker :disabled="!canEditLearning" :model-value="weekDraft.end || ''" label="选择结束日期" @update:model-value="updateWeekDraftField('end', $event)" /></label>
-              </div>
-              <div v-if="validateWeekDates()" class="ios-form-error" role="alert">{{ validateWeekDates() }}</div>
+              <template v-if="plannerStep === 1">
+                <div class="panel-heading"><div><small>第 1 步</small><h2>确认学习周期</h2></div><span class="ios-info-chip">新建时默认复制上一周</span></div>
+                <div class="ios-form-grid">
+                  <label class="span-2"><span>本周主题</span><input :disabled="!canEditLearning" :value="weekDraft.title || ''" placeholder="例如：马可福音（上）" @input="updateWeekDraftField('title', $event.target.value)" /></label>
+                  <label><span>开始日期</span><AppDatePicker :disabled="!canEditLearning" :model-value="weekDraft.start || ''" label="选择开始日期" @update:model-value="updateWeekDraftField('start', $event)" /></label>
+                  <label><span>结束日期</span><AppDatePicker :disabled="!canEditLearning" :model-value="weekDraft.end || ''" label="选择结束日期" @update:model-value="updateWeekDraftField('end', $event)" /></label>
+                </div>
+                <div v-if="validateWeekDates()" class="ios-form-error" role="alert">{{ validateWeekDates() }}</div>
+                <div class="planner-next"><button :disabled="!!validateWeekDates()" type="button" @click="plannerStep = 2">下一步：填写内容</button></div>
+              </template>
 
-              <div class="ios-editor-section"><div class="editor-section-heading"><div><span class="section-number">2</span><div><b>填写本周内容</b><small>不用的项目关闭即可，关闭后不再显示其设置。</small></div></div></div></div>
-              <section class="simple-task-card"><header><label><input :disabled="!canEditLearning" type="checkbox" :checked="weekDraft.book_enabled !== false" @change="updateWeekDraftField('book_enabled',$event.target.checked)" /><b>周读物</b></label><button v-if="weekDraft.book_enabled !== false" class="ios-text-button" :disabled="!canEditLearning" type="button" @click="addWeekBinding('readings')">＋ 添加</button></header><div v-if="weekDraft.book_enabled !== false" class="simple-task-fields"><div class="ios-binding-row" v-for="(item,index) in weekDraft.readings || []" :key="`r-${index}`"><input :disabled="!canEditLearning" :value="item.title || ''" :aria-label="`第 ${index + 1} 项读物标题`" placeholder="读物标题" @change="updateWeekBinding('readings',index,'title',$event.target.value)" /><select :disabled="!canEditLearning" :value="librarySelectionValue(item)" @change="applyBindingSelection('readings',index,$event.target.value)"><option value="">选择资料</option><option v-for="option in readingOptions" :key="librarySelectionValue(option)" :value="librarySelectionValue(option)">{{ optionText(option) }}</option></select><button class="icon-danger" :disabled="!canEditLearning" type="button" @click="removeWeekBinding('readings',index)">×</button></div></div></section>
-              <section class="simple-task-card"><header><label><input :disabled="!canEditLearning" type="checkbox" :checked="weekDraft.video_enabled !== false" @change="updateWeekDraftField('video_enabled',$event.target.checked)" /><b>本周视频</b></label><button v-if="weekDraft.video_enabled !== false" class="ios-text-button" :disabled="!canEditLearning" type="button" @click="addWeekBinding('videos')">＋ 添加</button></header><div v-if="weekDraft.video_enabled !== false" class="simple-task-fields"><div class="ios-binding-row" v-for="(item,index) in weekDraft.videos || []" :key="`v-${index}`"><input :disabled="!canEditLearning" :value="item.title || ''" placeholder="视频标题" @change="updateWeekBinding('videos',index,'title',$event.target.value)" /><input :disabled="!canEditLearning" :value="item.url || ''" placeholder="视频链接" @change="updateWeekBinding('videos',index,'url',$event.target.value)" /><button class="icon-danger" :disabled="!canEditLearning" type="button" @click="removeWeekBinding('videos',index)">×</button></div></div></section>
-              <section class="simple-task-card"><header><label><input :disabled="!canEditLearning" type="checkbox" :checked="weekDraft.verse_enabled !== false" @change="updateWeekDraftField('verse_enabled',$event.target.checked)" /><b>背经与默写</b></label></header><div v-if="weekDraft.verse_enabled !== false" class="simple-task-fields ios-form-grid"><label><span>经文范围</span><input :disabled="!canEditLearning" :value="weekDraft.verse_ref || ''" placeholder="例如：罗马书 8:1-5" @change="updateWeekDraftField('verse_ref',$event.target.value)" /></label><label class="span-2"><span>背诵原文</span><textarea :disabled="!canEditLearning" rows="4" :value="weekDraft.recite_text || ''" @change="updateWeekDraftField('recite_text',$event.target.value)"></textarea></label></div></section>
-              <section class="simple-task-card"><header><label><input :disabled="!canEditLearning" type="checkbox" :checked="weekDraft.outline_enabled !== false" @change="updateWeekDraftField('outline_enabled',$event.target.checked)" /><b>提纲图片</b></label></header><div v-if="weekDraft.outline_enabled !== false" class="simple-task-fields"><select :disabled="!canEditLearning" :value="librarySelectionValue(weekDraft.outline)" @change="applyOutlineSelection($event.target.value)"><option value="">选择提纲图片</option><option v-for="item in outlineOptions" :key="librarySelectionValue(item)" :value="librarySelectionValue(item)">{{ optionText(item) }}</option></select></div></section>
-              <div v-if="taskPreviewOpen" class="simple-task-preview"><small>第 3 步 · 成员端预览</small><h3>{{ weekDraft.title || '未命名本周任务' }}</h3><p>{{ weekDraft.start }} — {{ weekDraft.end }}</p><div class="plan-tags"><span v-if="weekDraft.book_enabled !== false">读物</span><span v-if="weekDraft.video_enabled !== false">视频</span><span v-if="weekDraft.verse_enabled !== false">背经与默写</span><span v-if="weekDraft.outline_enabled !== false">提纲</span></div></div>
-              <footer class="ios-editor-actions"><button v-if="weekDraft.id" class="ios-danger-button" :disabled="!canEditLearning || !!pendingAction" type="button" @click="deleteWeekWithPending">{{ isPending('delete-week') ? '删除中…' : '删除本周任务' }}</button><button class="ios-secondary-button" :disabled="!!validateWeekDates()" type="button" @click="previewWeekDraft">预览</button><button :disabled="!canEditLearning || !!pendingAction || !!validateWeekDates()" type="button" @click="saveWeekWithValidation">{{ isPending('save-week') ? '发布中…' : '发布本周任务' }}</button></footer>
+              <template v-else-if="plannerStep === 2">
+                <div class="panel-heading"><div><small>第 2 步</small><h2>填写学习内容</h2><p>不用的项目直接关闭；文件可以在任务卡里上传。</p></div><span class="ios-info-chip">{{ taskProgress.done }}/{{ taskProgress.total }} 项已就绪</span></div>
+                <section class="simple-task-card"><header><label><input :disabled="!canEditLearning" type="checkbox" :checked="dailyDevotion.enabled !== false" @change="updateLearningValue(['task_sections','daily','devotion','enabled'],$event.target.checked)" /><b>每日灵修</b></label><span class="task-ready">{{ dailyDevotion.enabled === false || dailyDevotion.title || dailyDevotion.path ? '已就绪' : '待填写' }}</span></header><div v-if="dailyDevotion.enabled !== false" class="simple-task-fields ios-form-grid"><label><span>栏目名称</span><input :value="dailyDevotion.title || ''" placeholder="例如：每日灵修" @input="updateLearningValue(['task_sections','daily','devotion','title'],$event.target.value)" /></label><label><span>阅读按钮</span><input :value="dailyDevotion.button_label || ''" placeholder="阅读今日内容" @input="updateLearningValue(['task_sections','daily','devotion','button_label'],$event.target.value)" /></label></div></section>
+                <section class="simple-task-card"><header><label><input :disabled="!canEditLearning" type="checkbox" :checked="dailyScripture.enabled !== false" @change="updateLearningValue(['task_sections','daily','scripture','enabled'],$event.target.checked)" /><b>每日读经</b></label><span class="task-ready">{{ dailyScripture.enabled === false || dailyScripture.label || dailyScripture.book ? '已就绪' : '待填写' }}</span></header><div v-if="dailyScripture.enabled !== false" class="simple-task-fields ios-form-grid"><label><span>栏目名称</span><input :value="dailyScripture.label || ''" placeholder="例如：每日读经" @input="updateLearningValue(['task_sections','daily','scripture','label'],$event.target.value)" /></label><label><span>书卷名称</span><input :value="dailyScripture.book || ''" placeholder="例如：马可福音" @input="updateLearningValue(['task_sections','daily','scripture','book'],$event.target.value)" /></label><label><span>起始日期</span><AppDatePicker :model-value="dailyScripture.start_date || ''" label="读经起始日期" @update:model-value="updateLearningValue(['task_sections','daily','scripture','start_date'],$event)" /></label><label><span>起始章</span><input type="number" min="1" :value="dailyScripture.start_chapter || 1" @input="updateLearningValue(['task_sections','daily','scripture','start_chapter'],Number($event.target.value || 1))" /></label></div></section>
+                <section class="simple-task-card"><header><label><input :disabled="!canEditLearning" type="checkbox" :checked="weekDraft.book_enabled !== false" @change="updateWeekDraftField('book_enabled',$event.target.checked)" /><b>周读物</b></label><button v-if="weekDraft.book_enabled !== false" class="ios-text-button" :disabled="!canEditLearning" type="button" @click="addWeekBinding('readings')">＋ 添加一项</button></header><div v-if="weekDraft.book_enabled !== false" class="simple-task-fields"><div class="task-binding-card" v-for="(item,index) in weekDraft.readings || []" :key="`r-${index}`"><input :disabled="!canEditLearning" :value="item.title || ''" :aria-label="`第 ${index + 1} 项读物标题`" placeholder="读物标题" @input="updateWeekBinding('readings',index,'title',$event.target.value)" /><select :disabled="!canEditLearning" :value="librarySelectionValue(item)" @change="applyBindingSelection('readings',index,$event.target.value)"><option value="">从资料库选择</option><option v-for="option in readingOptions" :key="librarySelectionValue(option)" :value="librarySelectionValue(option)">{{ optionText(option) }}</option></select><label class="inline-upload"><input type="file" accept=".pdf,.md" :disabled="!!pendingAction" @change="uploadTaskFile('readings',index,$event)" /><span>{{ isPending(`task-upload-readings-${index}`) ? '上传中…' : '直接上传文件' }}</span></label><button class="icon-danger" :disabled="!canEditLearning" type="button" aria-label="移除读物" @click="removeWeekBinding('readings',index)">×</button></div></div></section>
+                <section class="simple-task-card"><header><label><input :disabled="!canEditLearning" type="checkbox" :checked="weekDraft.video_enabled !== false" @change="updateWeekDraftField('video_enabled',$event.target.checked)" /><b>本周视频</b></label><button v-if="weekDraft.video_enabled !== false" class="ios-text-button" :disabled="!canEditLearning" type="button" @click="addWeekBinding('videos')">＋ 添加一项</button></header><div v-if="weekDraft.video_enabled !== false" class="simple-task-fields"><div class="task-binding-card" v-for="(item,index) in weekDraft.videos || []" :key="`v-${index}`"><input :disabled="!canEditLearning" :value="item.title || ''" placeholder="视频标题" @input="updateWeekBinding('videos',index,'title',$event.target.value)" /><input :disabled="!canEditLearning" :value="item.url || ''" placeholder="视频链接（也可直接上传）" @input="updateWeekBinding('videos',index,'url',$event.target.value)" /><label class="inline-upload"><input type="file" accept="video/*" :disabled="!!pendingAction" @change="uploadTaskFile('videos',index,$event)" /><span>{{ isPending(`task-upload-videos-${index}`) ? '上传中…' : '直接上传视频' }}</span></label><button class="icon-danger" :disabled="!canEditLearning" type="button" aria-label="移除视频" @click="removeWeekBinding('videos',index)">×</button></div></div></section>
+                <section class="simple-task-card"><header><label><input :disabled="!canEditLearning" type="checkbox" :checked="weekDraft.verse_enabled !== false" @change="updateWeekDraftField('verse_enabled',$event.target.checked)" /><b>背经与默写</b></label></header><div v-if="weekDraft.verse_enabled !== false" class="simple-task-fields ios-form-grid"><label><span>经文范围</span><input :disabled="!canEditLearning" :value="weekDraft.verse_ref || ''" placeholder="例如：罗马书 8:1-5" @input="updateWeekDraftField('verse_ref',$event.target.value)" /></label><label class="span-2"><span>经文原文</span><textarea :disabled="!canEditLearning" rows="5" :value="weekDraft.recite_text || ''" placeholder="粘贴本周需要背诵和默写的经文" @input="updateWeekDraftField('recite_text',$event.target.value)"></textarea></label></div></section>
+                <section class="simple-task-card"><header><label><input :disabled="!canEditLearning" type="checkbox" :checked="weekDraft.outline_enabled !== false" @change="updateWeekDraftField('outline_enabled',$event.target.checked)" /><b>提纲图片</b></label></header><div v-if="weekDraft.outline_enabled !== false" class="simple-task-fields"><select :disabled="!canEditLearning" :value="librarySelectionValue(weekDraft.outline)" @change="applyOutlineSelection($event.target.value)"><option value="">从资料库选择</option><option v-for="item in outlineOptions" :key="librarySelectionValue(item)" :value="librarySelectionValue(item)">{{ optionText(item) }}</option></select><label class="inline-upload wide"><input type="file" accept="image/*" :disabled="!!pendingAction" @change="uploadTaskFile('outline',0,$event)" /><span>{{ isPending('task-upload-outline-0') ? '上传中…' : '直接上传提纲图片' }}</span></label></div></section>
+                <section class="simple-task-card"><header><label><input :disabled="!canEditLearning" type="checkbox" :checked="shareSettings.enabled !== false" @change="updateLearningValue(['task_sections','share','enabled'],$event.target.checked)" /><b>得着分享</b></label></header><div v-if="shareSettings.enabled !== false" class="simple-task-fields"><label><span>成员端名称</span><input :value="shareSettings.label || ''" placeholder="例如：写下今天的得着" @input="updateLearningValue(['task_sections','share','label'],$event.target.value)" /></label></div></section>
+                <div class="planner-next split"><button class="ios-secondary-button" type="button" @click="plannerStep = 1">上一步</button><button :disabled="publishErrors.length > 0" type="button" @click="previewWeekDraft">预览成员页面</button></div>
+              </template>
+
+              <template v-else>
+                <div class="panel-heading"><div><small>第 3 步</small><h2>成员端效果预览</h2><p>确认周期和任务开关，发布后成员立即可见。</p></div><span class="ios-status" :class="{ active: weekDraft.publication_status === 'published' }">{{ weekDraft.publication_status === 'published' ? '已发布' : '草稿' }}</span></div>
+                <div class="phone-task-preview"><div class="phone-preview-top"><small>{{ activeGroupName }}</small><b>{{ weekDraft.title || '未命名本周任务' }}</b><span>{{ weekDraft.start }} — {{ weekDraft.end }}</span></div><div class="phone-preview-list"><div v-if="dailyDevotion.enabled !== false"><span>01</span><b>{{ dailyDevotion.title || '每日灵修' }}</b><em>每天</em></div><div v-if="dailyScripture.enabled !== false"><span>02</span><b>{{ dailyScripture.label || '每日读经' }}</b><em>{{ dailyScripture.book || '按日阅读' }}</em></div><div v-if="weekDraft.book_enabled !== false"><span>03</span><b>周读物</b><em>{{ (weekDraft.readings || []).filter(i => i.title || i.asset_id || i.url).length }} 项</em></div><div v-if="weekDraft.video_enabled !== false"><span>04</span><b>本周视频</b><em>{{ (weekDraft.videos || []).filter(i => i.title || i.asset_id || i.url).length }} 项</em></div><div v-if="weekDraft.verse_enabled !== false"><span>05</span><b>背经与默写</b><em>{{ weekDraft.verse_ref }}</em></div><div v-if="shareSettings.enabled !== false"><span>06</span><b>{{ shareSettings.label || '得着分享' }}</b><em>选填</em></div></div></div>
+                <div v-if="publishErrors.length" class="publish-error-list"><b>发布前还需要处理：</b><span v-for="error in publishErrors" :key="error">{{ error }}</span></div>
+                <div class="planner-next split"><button class="ios-secondary-button" type="button" @click="plannerStep = 2">返回修改</button><button :disabled="publishErrors.length > 0 || !!pendingAction" type="button" @click="saveWeek('published')">{{ isPending('save-week-published') ? '发布中…' : (weekDraft.publication_status === 'published' ? '确认重新发布' : '确认发布') }}</button></div>
+              </template>
+
+              <footer class="ios-editor-actions compact-actions"><button v-if="weekDraft.id && weekDraft.publication_status !== 'published'" class="ios-danger-button" :disabled="!canEditLearning || !!pendingAction" type="button" @click="deleteWeekWithPending">{{ isPending('delete-week') ? '删除中…' : '删除草稿' }}</button><button v-if="weekDraft.publication_status !== 'published'" class="ios-secondary-button" :disabled="!canEditLearning || !!pendingAction || !!validateWeekDates()" type="button" @click="saveWeek('draft')">{{ isPending('save-week-draft') ? '保存中…' : '保存草稿' }}</button></footer>
             </article>
           </div>
         </div>

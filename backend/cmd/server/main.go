@@ -110,18 +110,19 @@ type weekTaskBinding struct {
 }
 
 type studyWeekInput struct {
-	StartDate      string            `json:"start_date"`
-	EndDate        string            `json:"end_date"`
-	Title          string            `json:"title"`
-	VerseRef       string            `json:"verse_ref"`
-	ReciteText     string            `json:"recite_text"`
-	BookEnabled    bool              `json:"book_enabled"`
-	VideoEnabled   bool              `json:"video_enabled"`
-	VerseEnabled   bool              `json:"verse_enabled"`
-	OutlineEnabled bool              `json:"outline_enabled"`
-	Readings       []weekTaskBinding `json:"readings"`
-	Videos         []weekTaskBinding `json:"videos"`
-	Outline        weekTaskBinding   `json:"outline"`
+	StartDate         string            `json:"start_date"`
+	EndDate           string            `json:"end_date"`
+	Title             string            `json:"title"`
+	VerseRef          string            `json:"verse_ref"`
+	ReciteText        string            `json:"recite_text"`
+	BookEnabled       bool              `json:"book_enabled"`
+	VideoEnabled      bool              `json:"video_enabled"`
+	VerseEnabled      bool              `json:"verse_enabled"`
+	OutlineEnabled    bool              `json:"outline_enabled"`
+	Readings          []weekTaskBinding `json:"readings"`
+	Videos            []weekTaskBinding `json:"videos"`
+	Outline           weekTaskBinding   `json:"outline"`
+	PublicationStatus string            `json:"publication_status"`
 }
 
 type tokenClaims struct {
@@ -256,9 +257,9 @@ func (a *app) routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/study-weeks", a.auth(a.handleStudyWeeks))
 	mux.HandleFunc("GET /api/study-weeks/current", a.auth(a.handleCurrentStudyWeek))
-	mux.HandleFunc("POST /api/admin/study-weeks", a.auth(a.requireRole(roleGroupLeader, a.handleAdminCreateStudyWeek)))
-	mux.HandleFunc("PUT /api/admin/study-weeks/{id}", a.auth(a.requireRole(roleGroupLeader, a.handleAdminUpdateStudyWeek)))
-	mux.HandleFunc("DELETE /api/admin/study-weeks/{id}", a.auth(a.requireRole(roleGroupLeader, a.handleAdminDeleteStudyWeek)))
+	mux.HandleFunc("POST /api/admin/study-weeks", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminCreateStudyWeek)))
+	mux.HandleFunc("PUT /api/admin/study-weeks/{id}", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminUpdateStudyWeek)))
+	mux.HandleFunc("DELETE /api/admin/study-weeks/{id}", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminDeleteStudyWeek)))
 
 	mux.HandleFunc("POST /api/checkins", a.auth(a.handleCreateCheckin))
 	mux.HandleFunc("DELETE /api/checkins/{id}", a.auth(a.handleDeleteOwnCheckin))
@@ -269,18 +270,18 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/resource-library", a.auth(a.handleResourceLibrary))
 	mux.HandleFunc("GET /api/assets/{id}/download", a.auth(a.handleDownloadAsset))
 	mux.HandleFunc("GET /api/assets/{id}/range", a.auth(a.handleDownloadAssetRange))
-	mux.HandleFunc("POST /api/admin/assets/upload", a.auth(a.requireRole(roleGroupLeader, a.handleAdminUploadAsset)))
+	mux.HandleFunc("POST /api/admin/assets/upload", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminUploadAsset)))
 	mux.HandleFunc("GET /api/admin/resource-library", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminResourceLibrary)))
 	mux.HandleFunc("PUT /api/admin/resource-library/visibility", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminResourceLibraryVisibility)))
 	mux.HandleFunc("POST /api/admin/resource-folders", a.auth(a.requireSuper(a.handleAdminCreateResourceFolder)))
 	mux.HandleFunc("PUT /api/admin/resource-folders", a.auth(a.requireSuper(a.handleAdminRenameResourceFolder)))
 	mux.HandleFunc("GET /api/admin/learning-config", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminLearningConfig)))
-	mux.HandleFunc("PUT /api/admin/learning-config", a.auth(a.requireRole(roleGroupLeader, a.handleAdminSaveLearningConfig)))
+	mux.HandleFunc("PUT /api/admin/learning-config", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminSaveLearningConfig)))
 	mux.HandleFunc("GET /api/content/pdf-range", a.auth(a.handleStaticPDFRange))
 	mux.HandleFunc("GET /api/admin/exports/checkins-detail", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportCheckinsCSV)))
 	mux.HandleFunc("GET /api/admin/exports/daily-summary", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportDailySummaryCSV)))
 	mux.HandleFunc("GET /api/admin/exports/study-weeks", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportStudyWeeksExcel)))
-	mux.HandleFunc("POST /api/admin/imports/study-weeks", a.auth(a.requireRole(roleGroupLeader, a.handleAdminImportStudyWeeksExcel)))
+	mux.HandleFunc("POST /api/admin/imports/study-weeks", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminImportStudyWeeksExcel)))
 	mux.HandleFunc("GET /api/admin/exports/feedbacks", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportFeedbacksCSV)))
 	mux.HandleFunc("GET /api/admin/exports/local-backup", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminExportLocalBackupJSON)))
 	mux.HandleFunc("POST /api/admin/imports/local-backup", a.auth(a.requireRole(roleGroupLeader, a.handleAdminImportLocalBackupJSON)))
@@ -804,7 +805,13 @@ func (a *app) handleStudyWeeks(w http.ResponseWriter, r *http.Request) {
 	if groupID == 0 {
 		return
 	}
-	rows, err := a.db.Query(`SELECT id,start_date,end_date,title,verse_ref,recite_text,book_enabled,video_enabled,verse_enabled,outline_enabled FROM study_weeks WHERE group_id=? ORDER BY start_date`, groupID)
+	canManage := u.IsSuperAdmin || hasRole(u.Roles, roleGroupLeader) || hasRole(u.Roles, roleGroupAdmin)
+	query := `SELECT id,start_date,end_date,title,verse_ref,recite_text,book_enabled,video_enabled,verse_enabled,outline_enabled,publication_status,published_at FROM study_weeks WHERE group_id=?`
+	if !canManage {
+		query += ` AND publication_status='published'`
+	}
+	query += ` ORDER BY start_date`
+	rows, err := a.db.Query(query, groupID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "weeks_failed")
 		return
@@ -817,23 +824,27 @@ func (a *app) handleStudyWeeks(w http.ResponseWriter, r *http.Request) {
 		var title, verse string
 		var recite sql.NullString
 		var book, video, verseEnabled, outline bool
-		_ = rows.Scan(&id, &start, &end, &title, &verse, &recite, &book, &video, &verseEnabled, &outline)
+		var publicationStatus string
+		var publishedAt sql.NullTime
+		_ = rows.Scan(&id, &start, &end, &title, &verse, &recite, &book, &video, &verseEnabled, &outline, &publicationStatus, &publishedAt)
 		tasks, _ := a.weekTasks(groupID, id)
 		readings, videos, outlineBinding := splitWeekTaskBindings(tasks)
 		weeks = append(weeks, map[string]any{
-			"id":              id,
-			"start":           start.Format("2006-01-02"),
-			"end":             end.Format("2006-01-02"),
-			"title":           title,
-			"verse_ref":       verse,
-			"recite_text":     recite.String,
-			"book_enabled":    book,
-			"video_enabled":   video,
-			"verse_enabled":   verseEnabled,
-			"outline_enabled": outline,
-			"readings":        readings,
-			"videos":          videos,
-			"outline":         outlineBinding,
+			"id":                 id,
+			"start":              start.Format("2006-01-02"),
+			"end":                end.Format("2006-01-02"),
+			"title":              title,
+			"verse_ref":          verse,
+			"recite_text":        recite.String,
+			"book_enabled":       book,
+			"video_enabled":      video,
+			"verse_enabled":      verseEnabled,
+			"outline_enabled":    outline,
+			"readings":           readings,
+			"videos":             videos,
+			"outline":            outlineBinding,
+			"publication_status": publicationStatus,
+			"published_at":       nullableTime(publishedAt),
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"weeks": weeks})
@@ -918,6 +929,10 @@ func (a *app) saveStudyWeek(w http.ResponseWriter, r *http.Request, id uint64) {
 	if !readJSON(w, r, &req) {
 		return
 	}
+	req.PublicationStatus = strings.ToLower(strings.TrimSpace(req.PublicationStatus))
+	if req.PublicationStatus == "" {
+		req.PublicationStatus = "published"
+	}
 	if err := validateStudyWeekInput(req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -939,8 +954,12 @@ func (a *app) saveStudyWeek(w http.ResponseWriter, r *http.Request, id uint64) {
 	defer tx.Rollback()
 	nowTime := time.Now().In(a.location)
 	now := nowTime
+	var publishedAt any
+	if req.PublicationStatus == "published" {
+		publishedAt = now
+	}
 	if id == 0 {
-		res, err := tx.Exec(`INSERT INTO study_weeks (group_id,start_date,end_date,title,verse_ref,recite_text,book_enabled,video_enabled,verse_enabled,outline_enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`, groupID, req.StartDate, req.EndDate, req.Title, req.VerseRef, req.ReciteText, req.BookEnabled, req.VideoEnabled, req.VerseEnabled, req.OutlineEnabled, now, now)
+		res, err := tx.Exec(`INSERT INTO study_weeks (group_id,start_date,end_date,title,verse_ref,recite_text,book_enabled,video_enabled,verse_enabled,outline_enabled,publication_status,published_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, groupID, req.StartDate, req.EndDate, req.Title, req.VerseRef, req.ReciteText, req.BookEnabled, req.VideoEnabled, req.VerseEnabled, req.OutlineEnabled, req.PublicationStatus, publishedAt, now, now)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "week_save_failed")
 			return
@@ -948,7 +967,7 @@ func (a *app) saveStudyWeek(w http.ResponseWriter, r *http.Request, id uint64) {
 		id64, _ := res.LastInsertId()
 		id = uint64(id64)
 	} else {
-		result, err := tx.Exec(`UPDATE study_weeks SET start_date=?,end_date=?,title=?,verse_ref=?,recite_text=?,book_enabled=?,video_enabled=?,verse_enabled=?,outline_enabled=?,updated_at=? WHERE id=? AND group_id=?`, req.StartDate, req.EndDate, req.Title, req.VerseRef, req.ReciteText, req.BookEnabled, req.VideoEnabled, req.VerseEnabled, req.OutlineEnabled, now, id, groupID)
+		result, err := tx.Exec(`UPDATE study_weeks SET start_date=?,end_date=?,title=?,verse_ref=?,recite_text=?,book_enabled=?,video_enabled=?,verse_enabled=?,outline_enabled=?,publication_status=?,published_at=CASE WHEN ?='published' THEN COALESCE(published_at,?) ELSE NULL END,updated_at=? WHERE id=? AND group_id=?`, req.StartDate, req.EndDate, req.Title, req.VerseRef, req.ReciteText, req.BookEnabled, req.VideoEnabled, req.VerseEnabled, req.OutlineEnabled, req.PublicationStatus, req.PublicationStatus, now, now, id, groupID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "week_save_failed")
 			return
@@ -967,11 +986,22 @@ func (a *app) saveStudyWeek(w http.ResponseWriter, r *http.Request, id uint64) {
 		writeError(w, http.StatusInternalServerError, "week_save_failed")
 		return
 	}
-	a.audit(groupID, u.ID, "save_study_week", "study_weeks", id, nil, map[string]any{"title": req.Title}, r)
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id})
+	action := "save_study_week_draft"
+	if req.PublicationStatus == "published" {
+		action = "publish_study_week"
+	}
+	a.audit(groupID, u.ID, action, "study_weeks", id, nil, map[string]any{"title": req.Title, "publication_status": req.PublicationStatus}, r)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id, "publication_status": req.PublicationStatus})
 }
 
 func validateStudyWeekInput(req studyWeekInput) error {
+	status := strings.ToLower(strings.TrimSpace(req.PublicationStatus))
+	if status == "" {
+		status = "published"
+	}
+	if status != "draft" && status != "published" {
+		return errors.New("week_publication_status_invalid")
+	}
 	start, err := time.Parse("2006-01-02", strings.TrimSpace(req.StartDate))
 	if err != nil {
 		return errors.New("week_dates_required")
@@ -980,7 +1010,7 @@ func validateStudyWeekInput(req studyWeekInput) error {
 	if err != nil || end.Before(start) {
 		return errors.New("week_date_range_invalid")
 	}
-	if strings.TrimSpace(req.Title) == "" || len([]rune(strings.TrimSpace(req.Title))) > 200 {
+	if (status == "published" && strings.TrimSpace(req.Title) == "") || len([]rune(strings.TrimSpace(req.Title))) > 200 {
 		return errors.New("week_title_required")
 	}
 	for _, binding := range append(append([]weekTaskBinding{}, req.Readings...), req.Videos...) {
@@ -1084,7 +1114,7 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 		err := a.db.QueryRow(`SELECT st.title
 			FROM study_tasks st JOIN study_weeks sw ON sw.id=st.week_id AND sw.group_id=st.group_id
 			WHERE st.id=? AND st.week_id=? AND st.group_id=? AND st.task_type=? AND st.enabled=1
-			  AND ? BETWEEN sw.start_date AND sw.end_date`, req.TaskID, req.WeekID, groupID, req.TaskType, logicalDate.Format("2006-01-02")).Scan(&canonicalTitle)
+			  AND sw.publication_status='published' AND ? BETWEEN sw.start_date AND sw.end_date`, req.TaskID, req.WeekID, groupID, req.TaskType, logicalDate.Format("2006-01-02")).Scan(&canonicalTitle)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_task")
 			return
@@ -3474,7 +3504,7 @@ func (a *app) currentWeekAt(groupID uint64, date string) (map[string]any, error)
 	var start, end time.Time
 	var title, verse string
 	var recite sql.NullString
-	err := a.db.QueryRow(`SELECT id,start_date,end_date,title,verse_ref,recite_text FROM study_weeks WHERE group_id=? AND start_date <= ? AND end_date >= ? ORDER BY start_date DESC LIMIT 1`, groupID, date, date).
+	err := a.db.QueryRow(`SELECT id,start_date,end_date,title,verse_ref,recite_text FROM study_weeks WHERE group_id=? AND publication_status='published' AND start_date <= ? AND end_date >= ? ORDER BY start_date DESC LIMIT 1`, groupID, date, date).
 		Scan(&id, &start, &end, &title, &verse, &recite)
 	if err != nil {
 		return nil, err
@@ -3536,24 +3566,19 @@ func deleteStudyWeekTasksTx(tx *sql.Tx, groupID, weekID uint64) error {
 }
 
 func replaceStudyWeekTasksTx(tx *sql.Tx, groupID, weekID uint64, req studyWeekInput, now time.Time) error {
-	if err := deleteStudyWeekTasksTx(tx, groupID, weekID); err != nil {
-		return err
+	type desiredTask struct {
+		taskType, title, content, usage string
+		sortOrder                       int
+		assetID                         uint64
 	}
+	var desired []desiredTask
 	if req.BookEnabled {
 		order := 1
 		for _, reading := range req.Readings {
 			if strings.TrimSpace(reading.Title) == "" && reading.AssetID == 0 && strings.TrimSpace(reading.URL) == "" {
 				continue
 			}
-			taskID, err := insertStudyTaskTx(tx, groupID, weekID, "weekly_book", firstNonEmpty(strings.TrimSpace(reading.Title), "周读物"), strings.TrimSpace(reading.URL), order, now)
-			if err != nil {
-				return err
-			}
-			if reading.AssetID > 0 {
-				if err := linkTaskAssetTx(tx, groupID, taskID, reading.AssetID, "reading", order, now); err != nil {
-					return err
-				}
-			}
+			desired = append(desired, desiredTask{taskType: "weekly_book", title: firstNonEmpty(strings.TrimSpace(reading.Title), "周读物"), content: strings.TrimSpace(reading.URL), usage: "reading", sortOrder: order, assetID: reading.AssetID})
 			order++
 		}
 	}
@@ -3563,30 +3588,62 @@ func replaceStudyWeekTasksTx(tx *sql.Tx, groupID, weekID uint64, req studyWeekIn
 			if strings.TrimSpace(video.Title) == "" && video.AssetID == 0 && strings.TrimSpace(video.URL) == "" {
 				continue
 			}
-			taskID, err := insertStudyTaskTx(tx, groupID, weekID, "weekly_video", firstNonEmpty(strings.TrimSpace(video.Title), "本周视频"), strings.TrimSpace(video.URL), order, now)
-			if err != nil {
-				return err
-			}
-			if video.AssetID > 0 {
-				if err := linkTaskAssetTx(tx, groupID, taskID, video.AssetID, "video", order, now); err != nil {
-					return err
-				}
-			}
+			desired = append(desired, desiredTask{taskType: "weekly_video", title: firstNonEmpty(strings.TrimSpace(video.Title), "本周视频"), content: strings.TrimSpace(video.URL), usage: "video", sortOrder: order, assetID: video.AssetID})
 			order++
 		}
 	}
 	if req.VerseEnabled && strings.TrimSpace(req.VerseRef) != "" {
-		if _, err := insertStudyTaskTx(tx, groupID, weekID, "weekly_verse", strings.TrimSpace(req.VerseRef), strings.TrimSpace(req.ReciteText), 1, now); err != nil {
-			return err
-		}
+		desired = append(desired, desiredTask{taskType: "weekly_verse", title: strings.TrimSpace(req.VerseRef), content: strings.TrimSpace(req.ReciteText), sortOrder: 1})
 	}
 	if req.OutlineEnabled && (strings.TrimSpace(req.Outline.Title) != "" || req.Outline.AssetID > 0 || strings.TrimSpace(req.Outline.URL) != "") {
-		taskID, err := insertStudyTaskTx(tx, groupID, weekID, "weekly_outline", firstNonEmpty(strings.TrimSpace(req.Outline.Title), "提纲背诵"), strings.TrimSpace(req.Outline.URL), 1, now)
-		if err != nil {
+		desired = append(desired, desiredTask{taskType: "weekly_outline", title: firstNonEmpty(strings.TrimSpace(req.Outline.Title), "提纲背诵"), content: strings.TrimSpace(req.Outline.URL), usage: "outline", sortOrder: 1, assetID: req.Outline.AssetID})
+	}
+
+	rows, err := tx.Query(`SELECT id,task_type FROM study_tasks WHERE group_id=? AND week_id=? ORDER BY task_type,sort_order,id`, groupID, weekID)
+	if err != nil {
+		return err
+	}
+	existing := map[string][]uint64{}
+	for rows.Next() {
+		var id uint64
+		var taskType string
+		if err := rows.Scan(&id, &taskType); err != nil {
+			rows.Close()
 			return err
 		}
-		if req.Outline.AssetID > 0 {
-			if err := linkTaskAssetTx(tx, groupID, taskID, req.Outline.AssetID, "outline", 1, now); err != nil {
+		existing[taskType] = append(existing[taskType], id)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, item := range desired {
+		var taskID uint64
+		pool := existing[item.taskType]
+		if len(pool) > 0 {
+			taskID = pool[0]
+			existing[item.taskType] = pool[1:]
+			if _, err := tx.Exec(`UPDATE study_tasks SET title=?,content=?,required=1,enabled=1,sort_order=?,updated_at=? WHERE id=? AND group_id=? AND week_id=?`, item.title, item.content, item.sortOrder, now, taskID, groupID, weekID); err != nil {
+				return err
+			}
+		} else {
+			createdID, err := insertStudyTaskTx(tx, groupID, weekID, item.taskType, item.title, item.content, item.sortOrder, now)
+			if err != nil {
+				return err
+			}
+			taskID = createdID
+		}
+		if _, err := tx.Exec(`DELETE FROM task_assets WHERE group_id=? AND task_id=?`, groupID, taskID); err != nil {
+			return err
+		}
+		if item.assetID > 0 {
+			if err := linkTaskAssetTx(tx, groupID, taskID, item.assetID, item.usage, item.sortOrder, now); err != nil {
+				return err
+			}
+		}
+	}
+	for _, ids := range existing {
+		for _, taskID := range ids {
+			if _, err := tx.Exec(`UPDATE study_tasks SET enabled=0,updated_at=? WHERE id=? AND group_id=? AND week_id=?`, now, taskID, groupID, weekID); err != nil {
 				return err
 			}
 		}
@@ -4151,6 +4208,13 @@ func nullableUint64(v sql.NullInt64) any {
 		return nil
 	}
 	return uint64(v.Int64)
+}
+
+func nullableTime(v sql.NullTime) any {
+	if !v.Valid {
+		return nil
+	}
+	return v.Time.UTC().Format(time.RFC3339)
 }
 
 func nullJSON(b []byte) any {

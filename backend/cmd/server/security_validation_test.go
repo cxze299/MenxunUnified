@@ -108,6 +108,23 @@ func TestValidateStudyWeekInput(t *testing.T) {
 	}
 }
 
+func TestValidateStudyWeekPublicationStatus(t *testing.T) {
+	draft := studyWeekInput{StartDate: "2026-08-24", EndDate: "2026-08-30", PublicationStatus: "draft"}
+	if err := validateStudyWeekInput(draft); err != nil {
+		t.Fatalf("partial draft rejected: %v", err)
+	}
+	published := draft
+	published.PublicationStatus = "published"
+	if err := validateStudyWeekInput(published); err == nil || err.Error() != "week_title_required" {
+		t.Fatalf("untitled published week should be rejected, got %v", err)
+	}
+	invalid := draft
+	invalid.PublicationStatus = "scheduled"
+	if err := validateStudyWeekInput(invalid); err == nil || err.Error() != "week_publication_status_invalid" {
+		t.Fatalf("invalid publication status should be rejected, got %v", err)
+	}
+}
+
 func TestUploadCategoryExtensionAndContentType(t *testing.T) {
 	for _, value := range []string{"", "book", "MARKDOWN", "handout", "outline", "video", "mentor", "uploaded"} {
 		if _, err := normalizeAssetCategory(value); err != nil {
