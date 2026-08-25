@@ -268,6 +268,7 @@ const apiErrorMessages = {
   week_overlap: '日期与已有周计划重叠',
   week_date_range_invalid: '结束日期不能早于开始日期',
   week_title_required: '请填写周任务名称',
+	week_publication_status_invalid: '任务发布状态无效，请刷新页面重试',
   week_has_checkins: '本周已有成员打卡，不能删除；可以直接修改后重新发布',
   registration_pending: '该名单已有待审批申请',
   registration_request_unavailable: '申请已处理或不属于当前小组，请刷新',
@@ -639,6 +640,18 @@ export function createWeekDraft() {
     draft.end = formatLocalDate(end);
     state.weekDraft = draft;
   }
+  render();
+}
+
+export function createBlankWeekDraft() {
+  const latest = [...(state.weeks || [])].sort((a, b) => String(b.end || '').localeCompare(String(a.end || '')))[0];
+  const draft = weekDraftFromWeek(null);
+  const start = latest ? parseLocalDate(latest.end) : parseLocalDate(todayString());
+  if (latest) start.setDate(start.getDate() + 1);
+  const end = new Date(start); end.setDate(end.getDate() + 6);
+  draft.start = formatLocalDate(start);
+  draft.end = formatLocalDate(end);
+  state.weekDraft = draft;
   render();
 }
 
@@ -1933,7 +1946,7 @@ export async function loadAdminData(force = false, throwOnError = false) {
 }
 
 function canEditLearning() {
-  return Boolean(state.user?.is_super_admin || state.user?.roles?.includes('group_leader'));
+  return Boolean(state.user?.is_super_admin || state.user?.roles?.some((role) => ['group_leader', 'group_admin'].includes(role)));
 }
 
 function adminShell(title, content) {
@@ -1978,8 +1991,10 @@ export async function saveLearningConfig() {
     state.learningConfig = result.settings || state.learningConfig;
     toast('学习内容配置已保存');
     await loadAll();
+	return result;
   } catch (error) {
     toast(error.message);
+	throw error;
   }
 }
 
@@ -2024,6 +2039,7 @@ function weekDraftFromWeek(week = null) {
       readings: [{ title: '', url: '', type: 'pdf', asset_id: 0 }],
       videos: [{ title: '', url: '', type: 'video', asset_id: 0 }],
       outline: { title: '', url: '', type: 'image', asset_id: 0 },
+	  publication_status: 'draft',
     };
   }
   return {
@@ -2040,6 +2056,7 @@ function weekDraftFromWeek(week = null) {
     readings: (week.readings || []).length ? (week.readings || []).map((item) => ({ ...item })) : [{ title: '', url: '', type: 'pdf', asset_id: 0 }],
     videos: (week.videos || []).length ? (week.videos || []).map((item) => ({ ...item })) : [{ title: '', url: '', type: 'video', asset_id: 0 }],
     outline: week.outline ? { ...week.outline } : { title: '', url: '', type: 'image', asset_id: 0 },
+	publication_status: week.publication_status || 'published',
   };
 }
 
@@ -2131,7 +2148,7 @@ export function restoreWeekDraftDefaults() {
   render();
 }
 
-export async function saveWeekDraft() {
+export async function saveWeekDraft(publicationStatus = 'published') {
   const draft = state.weekDraft || weekDraftFromWeek();
   const payload = {
     start_date: draft.start,
@@ -2161,19 +2178,22 @@ export async function saveWeekDraft() {
       type: draft.outline?.type || 'image',
       asset_id: Number(draft.outline?.asset_id || 0),
     },
+	publication_status: publicationStatus,
   };
   try {
     const endpoint = draft.id ? `/admin/study-weeks/${draft.id}` : '/admin/study-weeks';
     const method = draft.id ? 'PUT' : 'POST';
     const result = await api(endpoint, { method, body: JSON.stringify(payload) });
-    toast('当前周任务已保存');
+	toast(publicationStatus === 'draft' ? '草稿已保存，成员暂时看不到' : '本周任务已发布');
     await loadAll({ forceGroupData: true });
     const savedID = Number(result.id || draft.id || 0);
     const savedWeek = (state.weeks || []).find((item) => Number(item.id) === savedID);
-    state.weekDraft = weekDraftFromWeek(savedWeek || { ...draft, id: savedID });
+	state.weekDraft = weekDraftFromWeek(savedWeek || { ...draft, id: savedID, publication_status: publicationStatus });
     render();
+	return result;
   } catch (error) {
     toast(error.message);
+	throw error;
   }
 }
 
