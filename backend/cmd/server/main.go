@@ -7,6 +7,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
 	"encoding/csv"
@@ -36,6 +37,7 @@ import (
 	mysqlDriver "github.com/go-sql-driver/mysql"
 	pdfapi "github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/xuri/excelize/v2"
+	"golang.org/x/crypto/argon2"
 )
 
 const (
@@ -44,6 +46,7 @@ const (
 	roleGroupLeader          = "group_leader"
 	appTZName                = "Asia/Shanghai"
 	tokenTTL                 = 30 * 24 * time.Hour
+	adminTokenTTL            = 12 * time.Hour
 	maxUploadBytes           = int64(512 << 20)
 	maxBackupBytes           = int64(64 << 20)
 	maxStudyWeeksImportBytes = int64(32 << 20)
@@ -54,14 +57,15 @@ const (
 )
 
 type app struct {
-	db            *sql.DB
-	secret        []byte
-	assetsRoot    string
-	contentRoot   string
-	migrationsDir string
-	location      *time.Location
-	loginLimiter  *loginLimiter
-	rosterPath    string
+	db             *sql.DB
+	secret         []byte
+	assetsRoot     string
+	contentRoot    string
+	migrationsDir  string
+	location       *time.Location
+	loginLimiter   *loginLimiter
+	requestLimiter *requestLimiter
+	rosterPath     string
 }
 
 type config struct {
@@ -94,12 +98,15 @@ type currentUser struct {
 	Roles              []string `json:"roles"`
 	Email              string   `json:"email"`
 	AvatarURL          string   `json:"avatar_url"`
+	TokenIssuedAt      int64    `json:"-"`
 }
 
 type group struct {
-	ID   uint64 `json:"id"`
-	Code string `json:"code"`
-	Name string `json:"name"`
+	ID          uint64 `json:"id"`
+	Code        string `json:"code"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Status      int    `json:"status"`
 }
 
 type weekTaskBinding struct {
@@ -130,6 +137,7 @@ type tokenClaims struct {
 	CurrentGroupID uint64 `json:"gid,omitempty"`
 	AuthVersion    uint64 `json:"ver"`
 	ExpiresAt      int64  `json:"exp"`
+	IssuedAt       int64  `json:"iat"`
 }
 
 func main() {
@@ -157,14 +165,15 @@ func main() {
 		loc = time.FixedZone("CST", 8*3600)
 	}
 	a := &app{
-		db:            db,
-		secret:        []byte(cfg.JWTSecret),
-		assetsRoot:    cfg.AssetsRoot,
-		contentRoot:   cfg.ContentRoot,
-		migrationsDir: cfg.MigrationsDir,
-		location:      loc,
-		loginLimiter:  newLoginLimiter(),
-		rosterPath:    cfg.RosterPath,
+		db:             db,
+		secret:         []byte(cfg.JWTSecret),
+		assetsRoot:     cfg.AssetsRoot,
+		contentRoot:    cfg.ContentRoot,
+		migrationsDir:  cfg.MigrationsDir,
+		location:       loc,
+		loginLimiter:   newLoginLimiter(),
+		requestLimiter: newRequestLimiter(),
+		rosterPath:     cfg.RosterPath,
 	}
 	if err := a.runMigrations(); err != nil {
 		log.Fatal(err)
@@ -242,12 +251,14 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/registration-preview", a.handleRegistrationPreview)
 	mux.HandleFunc("POST /api/auth/register", a.handleRegister)
 	mux.HandleFunc("GET /api/auth/me", a.auth(a.handleMe))
+	mux.HandleFunc("POST /api/memberships/apply", a.auth(a.handleMembershipApply))
 	mux.HandleFunc("PUT /api/auth/profile", a.auth(a.handleUpdateProfile))
 	mux.HandleFunc("POST /api/auth/avatar", a.auth(a.handleUploadAvatar))
 	mux.HandleFunc("GET /api/avatars/{name}", a.handleAvatar)
 	mux.HandleFunc("POST /api/auth/switch-group", a.auth(a.handleSwitchGroup))
 	mux.HandleFunc("POST /api/auth/default-group", a.auth(a.handleSetDefaultGroup))
 	mux.HandleFunc("POST /api/auth/change-password", a.auth(a.handleChangePassword))
+	mux.HandleFunc("POST /api/auth/logout-all", a.auth(a.handleLogoutAll))
 
 	mux.HandleFunc("GET /api/app/bootstrap", a.auth(a.handleBootstrap))
 	mux.HandleFunc("GET /api/dashboard/summary", a.auth(a.handleDashboardSummary))
@@ -264,6 +275,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/checkins", a.auth(a.handleCreateCheckin))
 	mux.HandleFunc("DELETE /api/checkins/{id}", a.auth(a.handleDeleteOwnCheckin))
 	mux.HandleFunc("GET /api/checkins", a.auth(a.handleListCheckins))
+	mux.HandleFunc("GET /api/reflections", a.auth(a.handleListReflections))
 	mux.HandleFunc("DELETE /api/admin/checkins/{id}", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminDeleteCheckin)))
 
 	mux.HandleFunc("GET /api/assets", a.auth(a.handleListAssets))
@@ -291,12 +303,19 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/members/{id}/admins", a.auth(a.requireRole(roleGroupAdmin, a.handleGrantGroupAdmin)))
 	mux.HandleFunc("DELETE /api/admin/members/{id}/admins", a.auth(a.requireRole(roleGroupAdmin, a.handleRevokeGroupAdmin)))
 	mux.HandleFunc("GET /api/admin/audit-logs", a.auth(a.requireRole(roleGroupAdmin, a.handleAuditLogs)))
+	mux.HandleFunc("GET /api/admin/group-settings", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminGroupSettings)))
+	mux.HandleFunc("PUT /api/admin/group-settings", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminSaveGroupSettings)))
+	mux.HandleFunc("GET /api/admin/stats/completion", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminCompletionStats)))
+	mux.HandleFunc("POST /api/admin/checkins", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminCreateCheckin)))
+	mux.HandleFunc("POST /api/admin/users/{id}/reset-password", a.auth(a.requireRole(roleGroupAdmin, a.handleAdminResetUserPassword)))
 	mux.HandleFunc("GET /api/admin/registration-requests", a.auth(a.requireRole(roleGroupAdmin, a.handleRegistrationRequests)))
 	mux.HandleFunc("POST /api/admin/registration-requests/{id}/approve", a.auth(a.requireRole(roleGroupAdmin, a.handleApproveRegistration)))
 	mux.HandleFunc("POST /api/admin/registration-requests/{id}/reject", a.auth(a.requireRole(roleGroupAdmin, a.handleRejectRegistration)))
 
 	mux.HandleFunc("GET /api/super-admin/groups", a.auth(a.requireSuper(a.handleSuperListGroups)))
+	mux.HandleFunc("GET /api/super-admin/overview", a.auth(a.requireSuper(a.handleSuperOverview)))
 	mux.HandleFunc("POST /api/super-admin/groups", a.auth(a.requireSuper(a.handleSuperCreateGroup)))
+	mux.HandleFunc("PUT /api/super-admin/groups/{id}/status", a.auth(a.requireSuper(a.handleSuperSetGroupStatus)))
 	mux.HandleFunc("POST /api/super-admin/groups/{id}/default-password", a.auth(a.requireSuper(a.handleSuperSetGroupDefaultPassword)))
 	mux.HandleFunc("GET /api/super-admin/users", a.auth(a.requireSuper(a.handleSuperListUsers)))
 	mux.HandleFunc("GET /api/super-admin/roster", a.auth(a.requireSuper(a.handleSuperRoster)))
@@ -305,6 +324,8 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/super-admin/roster/entries", a.auth(a.requireSuper(a.handleSuperRosterEntry)))
 	mux.HandleFunc("POST /api/super-admin/users", a.auth(a.requireSuper(a.handleSuperCreateUser)))
 	mux.HandleFunc("POST /api/super-admin/users/reset-all-passwords", a.auth(a.requireSuper(a.handleSuperResetAllPasswords)))
+	mux.HandleFunc("POST /api/super-admin/users/{id}/reset-password", a.auth(a.requireSuper(a.handleSuperResetUserPassword)))
+	mux.HandleFunc("POST /api/super-admin/users/merge", a.auth(a.requireSuper(a.handleSuperMergeUsers)))
 	mux.HandleFunc("POST /api/super-admin/groups/{id}/members", a.auth(a.requireSuper(a.handleSuperAddGroupMember)))
 	mux.HandleFunc("POST /api/super-admin/groups/{id}/leaders", a.auth(a.requireSuper(a.handleSuperSetLeader)))
 	mux.HandleFunc("DELETE /api/super-admin/groups/{id}/leaders/{user_id}", a.auth(a.requireSuper(a.handleSuperUnsetLeader)))
@@ -489,6 +510,11 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid_username_or_password")
 		return
 	}
+	if passwordNeedsUpgrade(user.PasswordHash) {
+		if upgraded, hashErr := hashPassword(req.Password); hashErr == nil {
+			_, _ = a.db.Exec("UPDATE users SET password_hash=?,updated_at=? WHERE id=? AND password_hash=?", upgraded, nowSQL(), user.ID, user.PasswordHash)
+		}
+	}
 	a.loginLimiter.success(remote, username)
 	groups, _ := a.visibleGroups(user.ID, user.IsSuperAdmin)
 	var currentGroupID uint64
@@ -516,6 +542,15 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user": mustUser(r)})
+}
+
+func (a *app) handleLogoutAll(w http.ResponseWriter, r *http.Request) {
+	u := mustUser(r)
+	if _, err := a.db.Exec("UPDATE users SET auth_version=auth_version+1,updated_at=? WHERE id=?", nowSQL(), u.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "logout_all_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (a *app) handleSwitchGroup(w http.ResponseWriter, r *http.Request) {
@@ -576,8 +611,8 @@ func (a *app) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if len(req.NewPassword) < 8 {
-		writeError(w, http.StatusBadRequest, "password_too_short")
+	if !validRegistrationPassword(req.NewPassword) {
+		writeError(w, http.StatusBadRequest, "password_too_weak")
 		return
 	}
 	var oldHash string
@@ -635,7 +670,16 @@ func (a *app) handleDashboardSummary(w http.ResponseWriter, r *http.Request) {
 	}
 	from := queryDate(r, "from", time.Now().In(a.location).AddDate(0, 0, -7))
 	to := queryDate(r, "to", time.Now().In(a.location))
-	rows, err := a.db.Query(`SELECT task_type, COUNT(*) FROM checkin_records WHERE group_id=? AND logical_date BETWEEN ? AND ? AND deleted_at IS NULL GROUP BY task_type`, groupID, from, to)
+	options := a.loadGroupOptions(groupID)
+	where := "group_id=? AND logical_date BETWEEN ? AND ? AND deleted_at IS NULL"
+	args := []any{groupID, from, to}
+	scope := "group"
+	if !options.ShowGroupSummary && !u.IsSuperAdmin && !hasRole(u.Roles, roleGroupAdmin) && !hasRole(u.Roles, roleGroupLeader) {
+		where += " AND user_id=?"
+		args = append(args, u.ID)
+		scope = "personal"
+	}
+	rows, err := a.db.Query(`SELECT task_type, COUNT(*) FROM checkin_records WHERE `+where+` GROUP BY task_type`, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "summary_failed")
 		return
@@ -648,7 +692,7 @@ func (a *app) handleDashboardSummary(w http.ResponseWriter, r *http.Request) {
 		_ = rows.Scan(&k, &c)
 		summary[k] = c
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"from": from, "to": to, "summary": summary})
+	writeJSON(w, http.StatusOK, map[string]any{"from": from, "to": to, "summary": summary, "scope": scope})
 }
 
 func (a *app) handleDashboardMonthlyRanking(w http.ResponseWriter, r *http.Request) {
@@ -744,11 +788,21 @@ func (a *app) handleDashboardMonthlyRanking(w http.ResponseWriter, r *http.Reque
 		}
 		return items[i].UserID < items[j].UserID
 	})
+	options := a.loadGroupOptions(groupID)
+	if !options.AllowMemberRanking && !u.IsSuperAdmin && !hasRole(u.Roles, roleGroupAdmin) && !hasRole(u.Roles, roleGroupLeader) {
+		personal := items[:0]
+		for _, item := range items {
+			if item.UserID == u.ID {
+				personal = append(personal, item)
+			}
+		}
+		items = personal
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"month": month,
 		"from":  start.Format("2006-01-02"),
 		"to":    end.Format("2006-01-02"),
-		"items": items,
+		"items": items, "ranking_enabled": options.AllowMemberRanking,
 	})
 }
 
@@ -1104,6 +1158,12 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "future_checkin_not_allowed")
 		return
 	}
+	cutoff := time.Now().In(a.location).AddDate(0, 0, -a.loadGroupOptions(groupID).RetroDays)
+	cutoff = time.Date(cutoff.Year(), cutoff.Month(), cutoff.Day(), 0, 0, 0, 0, a.location)
+	if logicalDate.Before(cutoff) {
+		writeError(w, http.StatusBadRequest, "retro_window_expired")
+		return
+	}
 	switch req.TaskType {
 	case "weekly_book", "weekly_video", "weekly_verse":
 		if req.WeekID == 0 || req.TaskID == 0 {
@@ -1136,14 +1196,24 @@ func (a *app) handleCreateCheckin(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "checkin_save_failed")
+		return
+	}
+	defer tx.Rollback()
 	now := nowSQL()
-	res, err := a.db.Exec(`INSERT INTO checkin_records (group_id,user_id,task_id,week_id,logical_date,checkin_time,task_type,status,is_retro,detail,note,part,source,created_by,created_at,updated_at)
+	res, err := tx.Exec(`INSERT INTO checkin_records (group_id,user_id,task_id,week_id,logical_date,checkin_time,task_type,status,is_retro,detail,note,part,source,created_by,created_at,updated_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, groupID, u.ID, nullableID(req.TaskID), nullableID(req.WeekID), req.LogicalDate, now, req.TaskType, "done", req.LogicalDate != today, truncate(req.Detail, 1000), truncate(req.Note, 4000), truncate(req.Part, 64), "web", u.ID, now, now)
 	if err != nil {
 		writeError(w, http.StatusConflict, "checkin_save_failed")
 		return
 	}
 	id, _ := res.LastInsertId()
+	if err := insertReflectionTx(tx, groupID, u.ID, uint64(id), req.LogicalDate, req.Note, now); err != nil || tx.Commit() != nil {
+		writeError(w, http.StatusInternalServerError, "checkin_save_failed")
+		return
+	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
 }
 
@@ -1158,7 +1228,14 @@ func (a *app) handleDeleteOwnCheckin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "checkin_id_required")
 		return
 	}
-	result, err := a.db.Exec(`UPDATE checkin_records SET deleted_at=?, active_key=id, updated_at=? WHERE id=? AND group_id=? AND user_id=? AND deleted_at IS NULL`, nowSQL(), nowSQL(), id, groupID, u.ID)
+	tx, err := a.db.Begin()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "delete_failed")
+		return
+	}
+	defer tx.Rollback()
+	now := nowSQL()
+	result, err := tx.Exec(`UPDATE checkin_records SET deleted_at=?, active_key=id, updated_at=? WHERE id=? AND group_id=? AND user_id=? AND deleted_at IS NULL`, now, now, id, groupID, u.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "delete_failed")
 		return
@@ -1166,6 +1243,10 @@ func (a *app) handleDeleteOwnCheckin(w http.ResponseWriter, r *http.Request) {
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
 		writeError(w, http.StatusNotFound, "checkin_not_found")
+		return
+	}
+	if _, err := tx.Exec("UPDATE reflections SET deleted_at=?,updated_at=? WHERE checkin_record_id=? AND group_id=? AND user_id=? AND deleted_at IS NULL", now, now, id, groupID, u.ID); err != nil || tx.Commit() != nil {
+		writeError(w, http.StatusInternalServerError, "delete_failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -1187,8 +1268,24 @@ func (a *app) handleAdminDeleteCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
-	_, err := a.db.Exec(`UPDATE checkin_records SET deleted_at=?, active_key=id, updated_at=? WHERE id=? AND group_id=? AND deleted_at IS NULL`, nowSQL(), nowSQL(), id, groupID)
+	tx, err := a.db.Begin()
 	if err != nil {
+		writeError(w, http.StatusInternalServerError, "delete_failed")
+		return
+	}
+	defer tx.Rollback()
+	now := nowSQL()
+	result, err := tx.Exec(`UPDATE checkin_records SET deleted_at=?, active_key=id, updated_at=? WHERE id=? AND group_id=? AND deleted_at IS NULL`, now, now, id, groupID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "delete_failed")
+		return
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		writeError(w, http.StatusNotFound, "checkin_not_found")
+		return
+	}
+	if _, err := tx.Exec("UPDATE reflections SET deleted_at=?,updated_at=? WHERE checkin_record_id=? AND group_id=? AND deleted_at IS NULL", now, now, id, groupID); err != nil || tx.Commit() != nil {
 		writeError(w, http.StatusInternalServerError, "delete_failed")
 		return
 	}
@@ -1217,7 +1314,11 @@ func (a *app) handleListCheckins(w http.ResponseWriter, r *http.Request) {
 		where += " AND user_id=?"
 		args = append(args, userID)
 	}
-	args = append(args, limit)
+	if cursorDate, cursorID, ok := parseCheckinCursor(r.URL.Query().Get("cursor")); ok {
+		where += " AND (logical_date < ? OR (logical_date = ? AND id < ?))"
+		args = append(args, cursorDate, cursorDate, cursorID)
+	}
+	args = append(args, limit+1)
 	rows, err := a.db.Query(`SELECT id,user_id,task_id,logical_date,checkin_time,task_type,part,detail,note FROM checkin_records WHERE `+where+` ORDER BY logical_date DESC, id DESC LIMIT ?`, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "checkins_failed")
@@ -1235,7 +1336,7 @@ func (a *app) handleListCheckins(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "checkins_failed")
 			return
 		}
-		item := map[string]any{"id": id, "user_id": uid, "task_id": nullableUint64(taskID), "logical_date": d.Format("2006-01-02"), "checkin_time": ts.Format(time.RFC3339), "task_type": tt, "part": part, "detail": detail, "note": note.String}
+		item := map[string]any{"id": id, "_cursor_id": id, "user_id": uid, "task_id": nullableUint64(taskID), "logical_date": d.Format("2006-01-02"), "checkin_time": ts.Format(time.RFC3339), "task_type": tt, "part": part, "detail": detail, "note": note.String}
 		if uid != u.ID && !canViewDetails {
 			item["id"] = uint64(0)
 			item["detail"] = ""
@@ -1247,7 +1348,17 @@ func (a *app) handleListCheckins(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "checkins_failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	nextCursor := ""
+	if len(items) > limit {
+		last := items[limit-1]
+		cursorID, _ := last["_cursor_id"].(uint64)
+		nextCursor = encodeCheckinCursor(asString(last["logical_date"]), cursorID)
+		items = items[:limit]
+	}
+	for _, item := range items {
+		delete(item, "_cursor_id")
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": nextCursor})
 }
 
 func (a *app) handleListAssets(w http.ResponseWriter, r *http.Request) {
@@ -1423,6 +1534,10 @@ func (a *app) handleAdminUploadAsset(w http.ResponseWriter, r *http.Request) {
 	if groupID == 0 {
 		return
 	}
+	if !a.requestLimiter.allow("asset-upload:"+clientIP(r)+":"+strconv.FormatUint(u.ID, 10), 20, time.Hour) {
+		writeError(w, http.StatusTooManyRequests, "too_many_attempts")
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes+(1<<20))
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeError(w, http.StatusRequestEntityTooLarge, "upload_too_large")
@@ -1459,14 +1574,12 @@ func (a *app) handleAdminUploadAsset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "unsupported_file_type")
 		return
 	}
-	relativeDir := filepath.Join(strconv.FormatUint(groupID, 10), category)
-	absoluteDir := filepath.Join(a.assetsRoot, relativeDir)
+	tempDir := filepath.Join(a.assetsRoot, "_tmp")
+	absoluteDir := tempDir
 	if err := os.MkdirAll(absoluteDir, 0o755); err != nil {
 		writeError(w, http.StatusInternalServerError, "asset_dir_failed")
 		return
 	}
-	relativePath := filepath.Join(relativeDir, fmt.Sprintf("%d-%s", time.Now().UnixNano(), safeName))
-	absolutePath := filepath.Join(a.assetsRoot, relativePath)
 	dst, err := os.CreateTemp(absoluteDir, ".agp-upload-*")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "asset_write_failed")
@@ -1485,9 +1598,30 @@ func (a *app) handleAdminUploadAsset(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusRequestEntityTooLarge, "upload_too_large")
 		return
 	}
-	if err := os.Rename(tempPath, absolutePath); err != nil {
-		writeError(w, http.StatusInternalServerError, "asset_write_failed")
-		return
+	checksum := hex.EncodeToString(hasher.Sum(nil))
+	relativePath := ""
+	deduplicated := false
+	var existingPath string
+	if err := a.db.QueryRow("SELECT storage_path FROM assets WHERE checksum_sha256=? AND file_size=? ORDER BY id LIMIT 1", checksum, size).Scan(&existingPath); err == nil {
+		candidate := filepath.Join(a.assetsRoot, filepath.FromSlash(existingPath))
+		if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() && info.Size() == size {
+			relativePath = filepath.ToSlash(existingPath)
+			deduplicated = true
+		}
+	}
+	if relativePath == "" {
+		relativePath = filepath.ToSlash(filepath.Join("_blobs", checksum[:2], checksum+ext))
+		absolutePath := filepath.Join(a.assetsRoot, filepath.FromSlash(relativePath))
+		if err := os.MkdirAll(filepath.Dir(absolutePath), 0o755); err != nil {
+			writeError(w, http.StatusInternalServerError, "asset_dir_failed")
+			return
+		}
+		if info, statErr := os.Stat(absolutePath); statErr == nil && !info.IsDir() && info.Size() == size {
+			deduplicated = true
+		} else if err := os.Rename(tempPath, absolutePath); err != nil {
+			writeError(w, http.StatusInternalServerError, "asset_write_failed")
+			return
+		}
 	}
 	title := truncate(strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename)), 255)
 	mt := mime.TypeByExtension(ext)
@@ -1497,9 +1631,8 @@ func (a *app) handleAdminUploadAsset(w http.ResponseWriter, r *http.Request) {
 	now := nowSQL()
 	res, err := a.db.Exec(`INSERT INTO assets (group_id,category,title,original_name,storage_path,mime_type,file_size,checksum_sha256,created_by,created_at,updated_at)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-		groupID, category, title, header.Filename, filepath.ToSlash(relativePath), mt, size, hex.EncodeToString(hasher.Sum(nil)), u.ID, now, now)
+		groupID, category, title, header.Filename, relativePath, mt, size, checksum, u.ID, now, now)
 	if err != nil {
-		_ = os.Remove(absolutePath)
 		writeError(w, http.StatusInternalServerError, "asset_save_failed")
 		return
 	}
@@ -1512,6 +1645,7 @@ func (a *app) handleAdminUploadAsset(w http.ResponseWriter, r *http.Request) {
 			"title":         title,
 			"original_name": header.Filename,
 			"url":           fmt.Sprintf("/api/assets/%d/download", id),
+			"deduplicated":  deduplicated,
 		},
 	})
 }
@@ -2041,10 +2175,17 @@ func (a *app) setRole(w http.ResponseWriter, r *http.Request, role string, grant
 		return
 	}
 	if grant {
-		_, _ = a.db.Exec("INSERT IGNORE INTO user_group_roles (group_id,user_id,role,created_at) VALUES (?,?,?,?)", groupID, targetUserID, role, nowSQL())
+		if _, err := a.db.Exec("INSERT IGNORE INTO user_group_roles (group_id,user_id,role,created_at) VALUES (?,?,?,?)", groupID, targetUserID, role, nowSQL()); err != nil {
+			writeError(w, http.StatusInternalServerError, "member_role_save_failed")
+			return
+		}
 	} else {
-		_, _ = a.db.Exec("DELETE FROM user_group_roles WHERE group_id=? AND user_id=? AND role=?", groupID, targetUserID, role)
+		if _, err := a.db.Exec("DELETE FROM user_group_roles WHERE group_id=? AND user_id=? AND role=?", groupID, targetUserID, role); err != nil {
+			writeError(w, http.StatusInternalServerError, "member_role_save_failed")
+			return
+		}
 	}
+	a.audit(groupID, u.ID, map[bool]string{true: "grant_role", false: "revoke_role"}[grant], "users", targetUserID, nil, map[string]any{"role": role}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -2054,7 +2195,16 @@ func (a *app) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
 	if groupID == 0 {
 		return
 	}
-	rows, err := a.db.Query(`SELECT id,actor_user_id,action,target_type,target_id,created_at FROM audit_logs WHERE group_id=? ORDER BY id DESC LIMIT 100`, groupID)
+	limit := clampInt(queryInt(r, "page_size", 100), 1, 200)
+	cursor, _ := strconv.ParseUint(r.URL.Query().Get("cursor"), 10, 64)
+	where := "group_id=?"
+	args := []any{groupID}
+	if cursor > 0 {
+		where += " AND id<?"
+		args = append(args, cursor)
+	}
+	args = append(args, limit+1)
+	rows, err := a.db.Query(`SELECT id,actor_user_id,action,target_type,target_id,created_at FROM audit_logs WHERE `+where+` ORDER BY id DESC LIMIT ?`, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "audit_failed")
 		return
@@ -2068,7 +2218,12 @@ func (a *app) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
 		_ = rows.Scan(&id, &actor, &action, &targetType, &target, &created)
 		items = append(items, map[string]any{"id": id, "actor_user_id": actor, "action": action, "target_type": targetType, "target_id": target, "created_at": created.Format(time.RFC3339)})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	nextCursor := uint64(0)
+	if len(items) > limit {
+		nextCursor, _ = items[limit-1]["id"].(uint64)
+		items = items[:limit]
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": nextCursor})
 }
 
 type localBackupMember struct {
@@ -3052,7 +3207,7 @@ func (a *app) handleAdminImportLocalBackupJSON(w http.ResponseWriter, r *http.Re
 }
 
 func (a *app) handleSuperListGroups(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.Query("SELECT id, code, name FROM study_groups ORDER BY id")
+	rows, err := a.db.Query("SELECT id, code, name, description, status FROM study_groups ORDER BY id")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "groups_failed")
 		return
@@ -3061,7 +3216,7 @@ func (a *app) handleSuperListGroups(w http.ResponseWriter, r *http.Request) {
 	var groups []group
 	for rows.Next() {
 		var g group
-		_ = rows.Scan(&g.ID, &g.Code, &g.Name)
+		_ = rows.Scan(&g.ID, &g.Code, &g.Name, &g.Description, &g.Status)
 		groups = append(groups, g)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"study_groups": groups})
@@ -3090,6 +3245,7 @@ func (a *app) handleSuperCreateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
+	a.audit(0, u.ID, "create_group", "study_groups", uint64(id), nil, map[string]any{"code": req.Code, "name": req.Name}, r)
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "default_password": password})
 }
 
@@ -3111,7 +3267,9 @@ func (a *app) handleSuperSetGroupDefaultPassword(w http.ResponseWriter, r *http.
 }
 
 func (a *app) handleSuperListUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.Query("SELECT id, username, display_name, is_super_admin, status FROM users ORDER BY id LIMIT 500")
+	limit := clampInt(queryInt(r, "page_size", 100), 1, 500)
+	cursor, _ := strconv.ParseUint(r.URL.Query().Get("cursor"), 10, 64)
+	rows, err := a.db.Query("SELECT id, username, display_name, is_super_admin, status FROM users WHERE id>? ORDER BY id LIMIT ?", cursor, limit+1)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "users_failed")
 		return
@@ -3126,7 +3284,12 @@ func (a *app) handleSuperListUsers(w http.ResponseWriter, r *http.Request) {
 		_ = rows.Scan(&id, &username, &display, &super, &status)
 		users = append(users, map[string]any{"id": id, "username": username, "display_name": display, "is_super_admin": super, "status": status})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"users": users})
+	nextCursor := uint64(0)
+	if len(users) > limit {
+		nextCursor, _ = users[limit-1]["id"].(uint64)
+		users = users[:limit]
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"users": users, "next_cursor": nextCursor})
 }
 
 func (a *app) handleSuperCreateUser(w http.ResponseWriter, r *http.Request) {
@@ -3161,6 +3324,7 @@ func (a *app) handleSuperCreateUser(w http.ResponseWriter, r *http.Request) {
 				_, _ = a.db.Exec("INSERT IGNORE INTO user_group_roles (group_id,user_id,role,created_at) VALUES (?,?,?,?)", req.GroupID, returnedID, req.Role, nowSQL())
 			}
 		}
+		a.audit(req.GroupID, u.ID, "create_user", "users", returnedID, nil, map[string]any{"username": req.Username, "group_id": req.GroupID}, r)
 		writeJSON(w, http.StatusCreated, map[string]any{"id": returnedID})
 		return
 	}
@@ -3183,6 +3347,7 @@ func (a *app) handleSuperCreateUser(w http.ResponseWriter, r *http.Request) {
 			_, _ = a.db.Exec("INSERT IGNORE INTO user_group_roles (group_id,user_id,role,created_at) VALUES (?,?,?,?)", req.GroupID, id, req.Role, nowSQL())
 		}
 	}
+	a.audit(req.GroupID, u.ID, "create_user", "users", id, nil, map[string]any{"username": req.Username, "group_id": req.GroupID}, r)
 	resp := map[string]any{"id": id}
 	if req.Password == "" {
 		resp["initial_password"] = password
@@ -3228,6 +3393,7 @@ func (a *app) handleSuperAddGroupMember(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusConflict, "member_add_failed")
 		return
 	}
+	a.audit(groupID, u.ID, "add_member", "users", req.UserID, nil, map[string]any{"member_name": req.MemberName}, r)
 	writeJSON(w, http.StatusCreated, map[string]any{"ok": true})
 }
 
@@ -3240,6 +3406,7 @@ func (a *app) handleSuperUnsetLeader(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) superSetLeaderRole(w http.ResponseWriter, r *http.Request, grant bool) {
+	u := mustUser(r)
 	groupID, _ := strconv.ParseUint(r.PathValue("id"), 10, 64)
 	var userID uint64
 	if grant {
@@ -3253,11 +3420,23 @@ func (a *app) superSetLeaderRole(w http.ResponseWriter, r *http.Request, grant b
 	} else {
 		userID, _ = strconv.ParseUint(r.PathValue("user_id"), 10, 64)
 	}
-	if grant {
-		_, _ = a.db.Exec("INSERT IGNORE INTO user_group_roles (group_id,user_id,role,created_at) VALUES (?,?,?,?)", groupID, userID, roleGroupLeader, nowSQL())
-	} else {
-		_, _ = a.db.Exec("DELETE FROM user_group_roles WHERE group_id=? AND user_id=? AND role=?", groupID, userID, roleGroupLeader)
+	var member int
+	if userID == 0 || a.db.QueryRow("SELECT COUNT(*) FROM group_members WHERE group_id=? AND user_id=? AND status=1", groupID, userID).Scan(&member) != nil || member != 1 {
+		writeError(w, http.StatusBadRequest, "member_not_found")
+		return
 	}
+	if grant {
+		if _, err := a.db.Exec("INSERT IGNORE INTO user_group_roles (group_id,user_id,role,created_at) VALUES (?,?,?,?)", groupID, userID, roleGroupLeader, nowSQL()); err != nil {
+			writeError(w, http.StatusInternalServerError, "member_role_save_failed")
+			return
+		}
+	} else {
+		if _, err := a.db.Exec("DELETE FROM user_group_roles WHERE group_id=? AND user_id=? AND role=?", groupID, userID, roleGroupLeader); err != nil {
+			writeError(w, http.StatusInternalServerError, "member_role_save_failed")
+			return
+		}
+	}
+	a.audit(groupID, u.ID, map[bool]string{true: "grant_leader", false: "revoke_leader"}[grant], "users", userID, nil, map[string]any{"role": roleGroupLeader}, r)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -3274,6 +3453,7 @@ func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
+		u.TokenIssuedAt = claims.IssuedAt
 		if u.MustChangePassword && r.URL.Path != "/api/auth/me" && r.URL.Path != "/api/auth/change-password" {
 			writeError(w, http.StatusForbidden, "password_change_required")
 			return
@@ -3284,8 +3464,13 @@ func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 
 func (a *app) requireSuper(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !mustUser(r).IsSuperAdmin {
+		u := mustUser(r)
+		if !u.IsSuperAdmin {
 			writeError(w, http.StatusForbidden, "forbidden")
+			return
+		}
+		if !adminTokenFresh(u.TokenIssuedAt) {
+			writeError(w, http.StatusUnauthorized, "admin_reauthentication_required")
 			return
 		}
 		next(w, r)
@@ -3296,11 +3481,23 @@ func (a *app) requireRole(role string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u := mustUser(r)
 		if u.IsSuperAdmin || hasRole(u.Roles, role) || (role == roleGroupAdmin && hasRole(u.Roles, roleGroupLeader)) {
+			if !adminTokenFresh(u.TokenIssuedAt) {
+				writeError(w, http.StatusUnauthorized, "admin_reauthentication_required")
+				return
+			}
 			next(w, r)
 			return
 		}
 		writeError(w, http.StatusForbidden, "forbidden")
 	}
+}
+
+func adminTokenFresh(issuedAt int64) bool {
+	if issuedAt <= 0 {
+		return false
+	}
+	age := time.Since(time.Unix(issuedAt, 0))
+	return age >= -time.Minute && age <= adminTokenTTL
 }
 
 func mustUser(r *http.Request) currentUser {
@@ -3350,6 +3547,7 @@ func (a *app) allGroups() ([]group, error) {
 	for rows.Next() {
 		var g group
 		_ = rows.Scan(&g.ID, &g.Code, &g.Name)
+		g.Status = 1
 		out = append(out, g)
 	}
 	return out, nil
@@ -3365,6 +3563,7 @@ func (a *app) userGroups(userID uint64) ([]group, error) {
 	for rows.Next() {
 		var g group
 		_ = rows.Scan(&g.ID, &g.Code, &g.Name)
+		g.Status = 1
 		out = append(out, g)
 	}
 	return out, nil
@@ -3998,6 +4197,7 @@ func newTokenClaims(userID, currentGroupID, authVersion uint64) tokenClaims {
 		UserID:         userID,
 		CurrentGroupID: currentGroupID,
 		AuthVersion:    authVersion,
+		IssuedAt:       time.Now().Unix(),
 		ExpiresAt:      time.Now().Add(tokenTTL).Unix(),
 	}
 }
@@ -4041,11 +4241,39 @@ func hashPassword(password string) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	dk := pbkdf2Key([]byte(password), salt, 120000, 32, sha256.New)
-	return hex.EncodeToString(salt) + ":" + hex.EncodeToString(dk), nil
+	const memory = 64 * 1024
+	const iterations = 3
+	const parallelism = 1
+	dk := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, 32)
+	return fmt.Sprintf("$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s", memory, iterations, parallelism,
+		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(dk)), nil
 }
 
 func verifyPassword(password, stored string) bool {
+	if strings.HasPrefix(stored, "$argon2id$") {
+		parts := strings.Split(stored, "$")
+		if len(parts) != 6 || parts[1] != "argon2id" || parts[2] != "v=19" {
+			return false
+		}
+		var memory uint32
+		var iterations uint32
+		var parallelism uint8
+		if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &iterations, &parallelism); err != nil || memory < 8*1024 || memory > 256*1024 || iterations < 1 || iterations > 10 || parallelism < 1 || parallelism > 8 {
+			return false
+		}
+		salt, err := base64.RawStdEncoding.DecodeString(parts[4])
+		if err != nil || len(salt) < 16 || len(salt) > 64 {
+			return false
+		}
+		want, err := base64.RawStdEncoding.DecodeString(parts[5])
+		if err != nil || len(want) < 16 || len(want) > 64 {
+			return false
+		}
+		got := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, uint32(len(want)))
+		return subtle.ConstantTimeCompare(got, want) == 1
+	}
+	// Compatibility for accounts created before the Argon2id rollout. A valid
+	// login is transparently rehashed by handleLogin.
 	parts := strings.Split(stored, ":")
 	if len(parts) != 2 {
 		return false
@@ -4060,6 +4288,10 @@ func verifyPassword(password, stored string) bool {
 	}
 	got := pbkdf2Key([]byte(password), salt, 120000, len(want), sha256.New)
 	return hmac.Equal(want, got)
+}
+
+func passwordNeedsUpgrade(stored string) bool {
+	return !strings.HasPrefix(stored, "$argon2id$")
 }
 
 func pbkdf2Key(password, salt []byte, iter, keyLen int, h func() hash.Hash) []byte {
@@ -4232,6 +4464,39 @@ func queryDate(r *http.Request, key string, fallback time.Time) string {
 	return fallback.Format("2006-01-02")
 }
 
+func encodeCheckinCursor(logicalDate string, id uint64) string {
+	if _, err := time.Parse("2006-01-02", logicalDate); err != nil || id == 0 {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString([]byte(logicalDate + ":" + strconv.FormatUint(id, 10)))
+}
+
+func parseCheckinCursor(value string) (string, uint64, bool) {
+	decoded, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(value))
+	if err != nil {
+		return "", 0, false
+	}
+	parts := strings.Split(string(decoded), ":")
+	if len(parts) != 2 {
+		return "", 0, false
+	}
+	if _, err := time.Parse("2006-01-02", parts[0]); err != nil {
+		return "", 0, false
+	}
+	id, err := strconv.ParseUint(parts[1], 10, 64)
+	return parts[0], id, err == nil && id > 0
+}
+
+func insertReflectionTx(tx *sql.Tx, groupID, userID, checkinID uint64, logicalDate, note, now string) error {
+	content := strings.TrimSpace(note)
+	if content == "" {
+		return nil
+	}
+	_, err := tx.Exec(`INSERT INTO reflections(group_id,user_id,checkin_record_id,logical_date,content,visibility,created_at,updated_at)
+		VALUES(?,?,?,?,?,'private',?,?)`, groupID, userID, checkinID, logicalDate, truncate(content, 4000), now, now)
+	return err
+}
+
 func queryInt(r *http.Request, key string, fallback int) int {
 	v, err := strconv.Atoi(r.URL.Query().Get(key))
 	if err != nil {
@@ -4319,6 +4584,11 @@ func randomPassword(n int) string {
 	}
 	for i := range buf {
 		buf[i] = alphabet[int(buf[i])%len(alphabet)]
+	}
+	if n >= 3 {
+		buf[0] = "ABCDEFGHJKLMNPQRSTUVWXYZ"[int(buf[0])%24]
+		buf[1] = "abcdefghijkmnopqrstuvwxyz"[int(buf[1])%24]
+		buf[2] = "23456789"[int(buf[2])%8]
 	}
 	return string(buf)
 }

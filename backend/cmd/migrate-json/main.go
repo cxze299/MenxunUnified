@@ -2,19 +2,15 @@ package main
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"hash"
 	"io/fs"
 	"log"
-	"math"
 	"mime"
 	"net/url"
 	"os"
@@ -25,6 +21,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"golang.org/x/crypto/argon2"
 )
 
 const (
@@ -997,32 +994,9 @@ func hashPassword(password string) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	dk := pbkdf2Key([]byte(password), salt, 120000, 32, sha256.New)
-	return hex.EncodeToString(salt) + ":" + hex.EncodeToString(dk), nil
-}
-
-func pbkdf2Key(password, salt []byte, iter, keyLen int, h func() hash.Hash) []byte {
-	prf := hmac.New(h, password)
-	hashLen := prf.Size()
-	numBlocks := int(math.Ceil(float64(keyLen) / float64(hashLen)))
-	var dk []byte
-	for block := 1; block <= numBlocks; block++ {
-		prf.Reset()
-		prf.Write(salt)
-		prf.Write([]byte{byte(block >> 24), byte(block >> 16), byte(block >> 8), byte(block)})
-		u := prf.Sum(nil)
-		t := append([]byte(nil), u...)
-		for i := 1; i < iter; i++ {
-			prf.Reset()
-			prf.Write(u)
-			u = prf.Sum(nil)
-			for x := range t {
-				t[x] ^= u[x]
-			}
-		}
-		dk = append(dk, t...)
-	}
-	return dk[:keyLen]
+	dk := argon2.IDKey([]byte(password), salt, 3, 64*1024, 1, 32)
+	return fmt.Sprintf("$argon2id$v=19$m=65536,t=3,p=1$%s$%s",
+		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(dk)), nil
 }
 
 func randomPassword(n int) string {

@@ -11,7 +11,7 @@ func TestTokenClaimsAuthVersionAndExpiry(t *testing.T) {
 	a := &app{secret: []byte("0123456789abcdef0123456789abcdef")}
 	before := time.Now()
 	claims := newTokenClaims(42, 7, 3)
-	if claims.UserID != 42 || claims.CurrentGroupID != 7 || claims.AuthVersion != 3 {
+	if claims.UserID != 42 || claims.CurrentGroupID != 7 || claims.AuthVersion != 3 || claims.IssuedAt == 0 {
 		t.Fatalf("unexpected claims: %+v", claims)
 	}
 	if expires := time.Unix(claims.ExpiresAt, 0); expires.Before(before.Add(tokenTTL-time.Second)) || expires.After(time.Now().Add(tokenTTL+time.Second)) {
@@ -50,6 +50,15 @@ func TestTokenClaimsAuthVersionAndExpiry(t *testing.T) {
 				t.Fatal("expected invalid token to be rejected")
 			}
 		})
+	}
+}
+
+func TestAdminTokenFreshness(t *testing.T) {
+	if !adminTokenFresh(time.Now().Add(-time.Hour).Unix()) {
+		t.Fatal("recent login should authorize management operations")
+	}
+	if adminTokenFresh(0) || adminTokenFresh(time.Now().Add(-adminTokenTTL-time.Minute).Unix()) || adminTokenFresh(time.Now().Add(time.Hour).Unix()) {
+		t.Fatal("missing, expired, or future admin login time must be rejected")
 	}
 }
 

@@ -320,6 +320,10 @@ func (a *app) handleRegistrationGroups(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) handleRegistrationPreview(w http.ResponseWriter, r *http.Request) {
+	if !a.requestLimiter.allow("registration-preview:"+clientIP(r), 30, time.Hour) {
+		writeError(w, http.StatusTooManyRequests, "too_many_attempts")
+		return
+	}
 	var req struct {
 		Name    string `json:"name"`
 		GroupID uint64 `json:"group_id"`
@@ -364,14 +368,23 @@ func validRegistrationPassword(value string) bool {
 }
 
 func (a *app) handleRegister(w http.ResponseWriter, r *http.Request) {
+	if !a.requestLimiter.allow("registration-submit:"+clientIP(r), 5, time.Hour) {
+		writeError(w, http.StatusTooManyRequests, "too_many_attempts")
+		return
+	}
 	var req struct {
-		Name     string `json:"name"`
-		Username string `json:"username"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		GroupID  uint64 `json:"group_id"`
+		Name          string `json:"name"`
+		Username      string `json:"username"`
+		Email         string `json:"email"`
+		Password      string `json:"password"`
+		GroupID       uint64 `json:"group_id"`
+		TermsAccepted bool   `json:"terms_accepted"`
 	}
 	if !readJSON(w, r, &req) {
+		return
+	}
+	if !req.TermsAccepted {
+		writeError(w, http.StatusBadRequest, "terms_required")
 		return
 	}
 	username := strings.ToLower(strings.TrimSpace(req.Username))
@@ -439,8 +452,8 @@ func (a *app) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if email != "" {
 		emailValue = email
 	}
-	res, err := tx.Exec(`INSERT INTO registration_requests(roster_entry_id,group_id,canonical_name,username,email_normalized,password_hash,status,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,'pending',?,?)`, rosterID, req.GroupID, canonical, username, emailValue, hash, now, now)
+	res, err := tx.Exec(`INSERT INTO registration_requests(roster_entry_id,group_id,request_kind,canonical_name,username,email_normalized,password_hash,status,terms_accepted_at,created_at,updated_at)
+		VALUES(?,?,'new_account',?,?,?,?, 'pending',?,?,?)`, rosterID, req.GroupID, canonical, username, emailValue, hash, now, now, now)
 	if err != nil {
 		writeError(w, http.StatusConflict, "register_failed")
 		return
@@ -459,9 +472,11 @@ func (a *app) handleRegistrationRequests(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "group_required")
 		return
 	}
-	rows, err := a.db.Query(`SELECT rr.id,rr.canonical_name,rr.username,rr.email_normalized,rr.status,rr.rejection_reason,rr.created_at,re.canonical_name
+	pageSize := clampInt(queryInt(r, "page_size", 100), 1, 200)
+	page := clampInt(queryInt(r, "page", 1), 1, 100000)
+	rows, err := a.db.Query(`SELECT rr.id,rr.canonical_name,rr.username,rr.email_normalized,rr.status,rr.rejection_reason,rr.created_at,re.canonical_name,rr.request_kind,rr.applicant_user_id,rr.reviewed_by,rr.reviewed_at
 		FROM registration_requests rr JOIN roster_entries re ON re.id=rr.roster_entry_id
-		WHERE rr.group_id=? ORDER BY FIELD(rr.status,'pending','rejected','approved'),rr.created_at`, u.CurrentGroupID)
+		WHERE rr.group_id=? ORDER BY FIELD(rr.status,'pending','rejected','approved'),rr.created_at LIMIT ? OFFSET ?`, u.CurrentGroupID, pageSize+1, (page-1)*pageSize)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "registration_requests_failed")
 		return
@@ -470,14 +485,20 @@ func (a *app) handleRegistrationRequests(w http.ResponseWriter, r *http.Request)
 	items := []map[string]any{}
 	for rows.Next() {
 		var id uint64
-		var name, username, status, reason, rosterName string
+		var name, username, status, reason, rosterName, requestKind string
 		var email sql.NullString
+		var applicantID, reviewedBy sql.NullInt64
+		var reviewedAt sql.NullTime
 		var created time.Time
-		if rows.Scan(&id, &name, &username, &email, &status, &reason, &created, &rosterName) == nil {
-			items = append(items, map[string]any{"id": id, "name": name, "roster_name": rosterName, "username": username, "email": email.String, "status": status, "rejection_reason": reason, "created_at": created.Format(time.RFC3339)})
+		if rows.Scan(&id, &name, &username, &email, &status, &reason, &created, &rosterName, &requestKind, &applicantID, &reviewedBy, &reviewedAt) == nil {
+			items = append(items, map[string]any{"id": id, "name": name, "roster_name": rosterName, "username": username, "email": email.String, "status": status, "rejection_reason": reason, "created_at": created.Format(time.RFC3339), "request_kind": requestKind, "applicant_user_id": nullableUint64(applicantID), "reviewed_by": nullableUint64(reviewedBy), "reviewed_at": nullableTime(reviewedAt), "needs_attention": status == "pending" && time.Since(created) >= 7*24*time.Hour})
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"requests": items})
+	hasMore := len(items) > pageSize
+	if hasMore {
+		items = items[:pageSize]
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"requests": items, "page": page, "has_more": hasMore})
 }
 
 func (a *app) handleApproveRegistration(w http.ResponseWriter, r *http.Request) {
@@ -513,10 +534,11 @@ func (a *app) reviewRegistration(w http.ResponseWriter, r *http.Request, approve
 	}
 	defer tx.Rollback()
 	var rosterID, groupID uint64
-	var name, username, passwordHash, status string
+	var applicantID sql.NullInt64
+	var name, username, passwordHash, status, requestKind string
 	var email sql.NullString
-	err = tx.QueryRow(`SELECT roster_entry_id,group_id,canonical_name,username,email_normalized,password_hash,status
-		FROM registration_requests WHERE id=? FOR UPDATE`, requestID).Scan(&rosterID, &groupID, &name, &username, &email, &passwordHash, &status)
+	err = tx.QueryRow(`SELECT roster_entry_id,group_id,applicant_user_id,request_kind,canonical_name,username,email_normalized,password_hash,status
+		FROM registration_requests WHERE id=? FOR UPDATE`, requestID).Scan(&rosterID, &groupID, &applicantID, &requestKind, &name, &username, &email, &passwordHash, &status)
 	if err != nil || status != "pending" || (!u.IsSuperAdmin && groupID != u.CurrentGroupID) || groupID != u.CurrentGroupID {
 		writeError(w, http.StatusConflict, "registration_request_unavailable")
 		return
@@ -535,8 +557,55 @@ func (a *app) reviewRegistration(w http.ResponseWriter, r *http.Request, approve
 	var claimed sql.NullInt64
 	var leader bool
 	err = tx.QueryRow("SELECT claimed_by_user_id,is_leader FROM roster_entries WHERE id=? AND group_id=? AND status=1 FOR UPDATE", rosterID, groupID).Scan(&claimed, &leader)
-	if err != nil || claimed.Valid {
+	if err != nil || (claimed.Valid && (!applicantID.Valid || uint64(claimed.Int64) != uint64(applicantID.Int64))) {
 		writeError(w, http.StatusConflict, "roster_already_claimed")
+		return
+	}
+	if requestKind == "join_group" {
+		if !applicantID.Valid || applicantID.Int64 <= 0 {
+			writeError(w, http.StatusConflict, "registration_request_unavailable")
+			return
+		}
+		userID := uint64(applicantID.Int64)
+		var userActive int
+		if err := tx.QueryRow("SELECT COUNT(*) FROM users WHERE id=? AND status=1", userID).Scan(&userActive); err != nil || userActive != 1 {
+			writeError(w, http.StatusConflict, "account_unavailable")
+			return
+		}
+		var alreadyMember int
+		_ = tx.QueryRow("SELECT COUNT(*) FROM group_members WHERE group_id=? AND user_id=? AND status=1", groupID, userID).Scan(&alreadyMember)
+		if alreadyMember > 0 {
+			writeError(w, http.StatusConflict, "already_group_member")
+			return
+		}
+		if !claimed.Valid {
+			res, updateErr := tx.Exec("UPDATE roster_entries SET claimed_by_user_id=?,updated_at=? WHERE id=? AND claimed_by_user_id IS NULL", userID, now, rosterID)
+			if updateErr != nil {
+				writeError(w, http.StatusInternalServerError, "registration_review_failed")
+				return
+			}
+			affected, _ := res.RowsAffected()
+			if affected != 1 {
+				writeError(w, http.StatusConflict, "roster_already_claimed")
+				return
+			}
+		}
+		if err := addMemberTx(tx, groupID, userID, name, u.ID); err != nil {
+			writeError(w, http.StatusInternalServerError, "registration_review_failed")
+			return
+		}
+		if leader {
+			if _, err := tx.Exec("INSERT IGNORE INTO user_group_roles(group_id,user_id,role,created_at) VALUES(?,?,?,?)", groupID, userID, roleGroupLeader, now); err != nil {
+				writeError(w, http.StatusInternalServerError, "registration_review_failed")
+				return
+			}
+		}
+		if _, err := tx.Exec("UPDATE registration_requests SET status='approved',password_hash='',reviewed_by=?,reviewed_at=?,updated_at=? WHERE id=? AND status='pending'", u.ID, now, now, requestID); err != nil || tx.Commit() != nil {
+			writeError(w, http.StatusInternalServerError, "registration_review_failed")
+			return
+		}
+		a.audit(groupID, u.ID, "approve_membership", "registration_request", requestID, map[string]any{"status": "pending"}, map[string]any{"status": "approved", "user_id": userID}, r)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "approved", "user_id": userID, "request_kind": "join_group"})
 		return
 	}
 	var exists int
@@ -613,11 +682,15 @@ func (a *app) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_username")
 		return
 	}
-	if !validEmail(email) {
+	if email != "" && !validEmail(email) {
 		writeError(w, 400, "invalid_email")
 		return
 	}
-	_, err := a.db.Exec("UPDATE users SET username=?,name_pinyin=?,email=?,email_normalized=?,profile_updated_at=?,updated_at=? WHERE id=?", username, username, email, email, nowSQL(), nowSQL(), u.ID)
+	var normalizedEmail any
+	if email != "" {
+		normalizedEmail = email
+	}
+	_, err := a.db.Exec("UPDATE users SET username=?,name_pinyin=?,email=?,email_normalized=?,profile_updated_at=?,updated_at=? WHERE id=?", username, username, email, normalizedEmail, nowSQL(), nowSQL(), u.ID)
 	if err != nil {
 		writeError(w, 409, "profile_conflict")
 		return
