@@ -12,7 +12,7 @@ mkdir -p "$DAILY" "$MONTHLY"
 TMP="$DAILY/.menxun-$STAMP.sql.gz.tmp"
 FINAL="$DAILY/menxun-$STAMP.sql.gz"
 
-if /usr/local/bin/docker exec menxun-unified-db sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" exec mysqldump --single-transaction --quick --routines --triggers -u"$MYSQL_USER" "$MYSQL_DATABASE"' | gzip -9 > "$TMP"; then
+if /usr/local/bin/docker exec menxun-unified-db sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" exec mysqldump --single-transaction --quick --routines --triggers --no-tablespaces -u"$MYSQL_USER" "$MYSQL_DATABASE"' | gzip -9 > "$TMP"; then
   test -s "$TMP"
   mv "$TMP" "$FINAL"
 else
