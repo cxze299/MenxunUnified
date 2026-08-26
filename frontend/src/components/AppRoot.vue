@@ -260,14 +260,14 @@ async function chooseCalendarDate(day) { if (!day || !calendar.value?.month) ret
 
 <template>
   <div v-if="!booted" class="ios-boot-screen" role="status" aria-live="polite">
-    <div class="ios-boot-logo">AGP</div><div class="ios-spinner"></div><b>正在连接门训打卡</b><span>请稍候，正在加载账号与今日任务…</span>
+    <div class="ios-boot-logo">门训</div><div class="ios-spinner"></div><b>正在连接门训打卡系统</b><span>请稍候，正在加载账号与今日任务…</span>
   </div>
 
   <div v-else-if="!authenticated" class="ios-auth-screen">
     <div class="ios-auth-orb orb-one"></div><div class="ios-auth-orb orb-two"></div>
     <section class="ios-auth-brand">
-      <div class="ios-app-icon"><span>AGP</span></div>
-      <div class="ios-brand-kicker">2026 门训生命季</div>
+      <div class="ios-app-icon"><span>门训</span></div>
+      <div class="ios-brand-kicker">门训打卡系统</div>
       <h1>让每一天的坚持，<br />成为生命的成长。</h1>
       <p>专注今日任务、同行进度和学习资源。简单打卡，持续成长。</p>
       <div class="ios-feature-row"><span><AppIcon name="check" />每日任务</span><span><AppIcon name="users" />小组同行</span><span><AppIcon name="chart" />成长记录</span></div>
@@ -317,7 +317,7 @@ async function chooseCalendarDate(day) { if (!day || !calendar.value?.month) ret
 
   <div v-else class="ios-app-shell" :class="{ collapsed: sidebarCollapsed }">
     <aside class="ios-sidebar">
-      <div class="ios-sidebar-brand"><div class="ios-mini-logo">A</div><div v-if="!sidebarCollapsed"><b>门训打卡</b><small>{{ activeGroup?.name || 'AGP' }}</small></div></div>
+      <div class="ios-sidebar-brand"><div class="ios-mini-logo">门</div><div v-if="!sidebarCollapsed"><b>门训打卡系统</b><small>{{ activeGroup?.name || '门训小组' }}</small></div></div>
       <nav aria-label="主导航"><button v-for="item in navigation" :key="item.id" :class="{ active: tab === item.id }" :title="item.label" :aria-label="item.label" :aria-current="tab === item.id ? 'page' : undefined" type="button" @click="setTab(item.id)"><span><AppIcon :name="item.icon" :size="21" /></span><b v-if="!sidebarCollapsed">{{ item.label }}</b></button></nav>
       <div class="ios-sidebar-account"><button class="ios-account-button" type="button" aria-label="打开个人中心" @click="setTab('profile')"><img v-if="user?.avatar_url" :src="user.avatar_url" alt="个人头像" /><span v-else>{{ (user?.display_name || '?').slice(0,1) }}</span><div v-if="!sidebarCollapsed"><b>{{ user?.display_name }}</b><small>@{{ user?.username }}</small></div></button><button class="ios-logout-button" type="button" title="退出登录" aria-label="退出登录" @click="logout"><AppIcon name="logout" :size="19" /></button></div>
       <button class="ios-collapse-button" type="button" :title="sidebarCollapsed ? '展开导航' : '收起导航'" :aria-label="sidebarCollapsed ? '展开导航' : '收起导航'" @click="toggleSidebar"><AppIcon name="chevron" :size="18" /></button>
@@ -325,7 +325,7 @@ async function chooseCalendarDate(day) { if (!day || !calendar.value?.month) ret
 
     <main class="ios-main-area">
       <header v-if="tab !== 'home' || groups.length > 1" class="ios-topbar" :class="{ home: tab === 'home' }">
-        <div v-if="tab !== 'home'"><small>{{ activeGroup?.name || 'AGP' }}</small><h1>{{ pageMeta[0] }}</h1><p>{{ pageMeta[1] }}</p></div>
+        <div v-if="tab !== 'home'"><small>{{ activeGroup?.name || '门训小组' }}</small><h1>{{ pageMeta[0] }}</h1><p>{{ pageMeta[1] }}</p></div>
         <div v-if="groups.length > 1" class="ios-group-switcher"><span>当前小组</span><select :value="currentGroupID || ''" @change="selectGroup($event.target.value)"><option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option></select><button v-if="currentGroupID && defaultGroupID !== currentGroupID" type="button" @click="setDefaultGroupAction(currentGroupID)">设为默认</button></div>
       </header>
 

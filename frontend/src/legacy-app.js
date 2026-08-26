@@ -699,8 +699,8 @@ function loginView() {
   });
   return el('div', { class: 'login-shell' }, [
     el('div', { class: 'login-card' }, [
-      el('div', { class: 'brand-mark', text: 'AGP' }),
-      el('div', { class: 'eyebrow', text: 'AGAPE DISCIPLESHIP' }),
+      el('div', { class: 'brand-mark', text: '门训' }),
+      el('div', { class: 'eyebrow', text: '门训打卡系统' }),
       el('h1', { text: '打卡记录与小组管理' }),
       el('p', { text: '一个安静、清晰的入口，管理每日打卡、学习资源和小组成员。' }),
       el('div', { class: 'form-stack' }, [
@@ -758,7 +758,7 @@ function layout(content) {
       el('div', { class: 'sidebar-logo' }, [
         el('div', { class: 'brand-mark', text: 'A' }),
         el('div', {}, [
-          el('b', { text: 'AGP 打卡' }),
+          el('b', { text: '门训打卡系统' }),
           el('div', { class: 'muted', text: state.user?.display_name || '' }),
         ]),
       ]),
@@ -774,7 +774,7 @@ function layout(content) {
       el('main', { class: 'main' }, [
         el('div', { class: 'topbar' }, [
           el('div', { class: 'page-title page-title-card' }, [
-            el('div', { class: 'eyebrow', text: 'AGP Workspace' }),
+            el('div', { class: 'eyebrow', text: '门训打卡系统' }),
             el('h1', { text: pageTitle() }),
           ]),
           groupControls ? el('div', { class: 'toolbar-card' }, [groupControls]) : null,
@@ -794,7 +794,7 @@ function layout(content) {
 function pageTitle() {
   const titles = { home: '今日打卡', dashboard: '统计中心', resources: '资料库', admin: '管理后台' };
   if (state.tab === 'admin' && !canAdminAccess()) return titles.home;
-  return titles[state.tab] || 'AGP';
+  return titles[state.tab] || '门训打卡系统';
 }
 
 function groupPickerView() {

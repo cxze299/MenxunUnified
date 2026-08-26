@@ -71,7 +71,9 @@ cp .env.example .env
 docker compose --env-file .env -f deploy/docker-compose.separated.yml up -d --build
 ```
 
-默认入口：`http://NAS_IP:2980`
+容器默认入口：`http://NAS_IP:2980`
+
+当前生产入口：`https://mouss.synology.me:14400/`
 
 默认数据库端口只绑定本机：`127.0.0.1:3308`
 
