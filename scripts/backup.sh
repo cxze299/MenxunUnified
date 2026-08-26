@@ -2,7 +2,8 @@
 set -eu
 
 ROOT="${MENXUN_ROOT:-/volume2/docker/menxun-unified}"
-BACKUP_ROOT="${MENXUN_BACKUP_ROOT:-$ROOT/data/backups}"
+DATA_ROOT="${MENXUN_DATA_ROOT:-$ROOT/shared/data}"
+BACKUP_ROOT="${MENXUN_BACKUP_ROOT:-$DATA_ROOT/backups}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 DAILY="$BACKUP_ROOT/daily"
 MONTHLY="$BACKUP_ROOT/monthly"
@@ -26,7 +27,7 @@ if [ "$(date +%d)" = "01" ]; then
   find "$MONTHLY" -type f -name 'menxun-*.sql.gz' -mtime +92 -delete
 fi
 
-ASSET_BYTES="$(du -sb "$ROOT/data/assets" 2>/dev/null | awk '{print $1}' || printf 0)"
+ASSET_BYTES="$(du -sb "$DATA_ROOT/assets" 2>/dev/null | awk '{print $1}' || printf 0)"
 DB_BYTES="$(wc -c < "$FINAL" | tr -d ' ')"
 printf '{"ok":true,"finished_at":"%s","database_file":"%s","database_bytes":%s,"asset_bytes":%s}\n' \
   "$(date -Iseconds)" "$FINAL" "$DB_BYTES" "$ASSET_BYTES" > "$STATUS"

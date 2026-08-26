@@ -2,7 +2,8 @@
 set -eu
 
 ROOT="${MENXUN_ROOT:-/volume2/docker/menxun-unified}"
-BACKUP_ROOT="${MENXUN_BACKUP_ROOT:-$ROOT/data/backups}"
+DATA_ROOT="${MENXUN_DATA_ROOT:-$ROOT/shared/data}"
+BACKUP_ROOT="${MENXUN_BACKUP_ROOT:-$DATA_ROOT/backups}"
 BACKUP_FILE="${1:-$(find "$BACKUP_ROOT/daily" -type f -name 'menxun-*.sql.gz' | sort | tail -1)}"
 test -n "$BACKUP_FILE" && test -s "$BACKUP_FILE"
 DRILL_DB="menxun_restore_drill_$(date +%Y%m%d%H%M%S)"
