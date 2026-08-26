@@ -381,6 +381,8 @@ body { background: var(--ios-bg); color: var(--ios-text); }
 .ios-auth-card header p { margin: 0; color: var(--ios-secondary); }
 .ios-auth-form, .ios-stack { display: grid; gap: 14px; }
 .ios-auth-form label, .ios-stack label, .ios-form-grid label { display: grid; gap: 7px; color: var(--ios-secondary); font-size: 13px; font-weight: 700; }
+.ios-auth-form .ios-consent-check, .ios-stack .ios-consent-check { display: flex; align-items: flex-start; gap: 10px; line-height: 1.5; font-weight: 500; }
+.ios-consent-check input { width: 20px; height: 20px; min-width: 20px; margin-top: 1px; accent-color: var(--ios-blue); }
 .ios-auth-form > button, .ios-stack > button:not(.ios-secondary-button):not(.ios-danger-button) { margin-top: 4px; min-height: 50px; border-radius: 15px; }
 .ios-roster-match { display: flex; align-items: center; gap: 11px; padding: 12px 14px; border-radius: 14px; background: rgba(33,182,111,.1); color: #16784b; }
 .ios-roster-match.error { background: rgba(255,69,58,.1); color: #bd2f28; }
@@ -499,3 +501,9 @@ body { background: var(--ios-bg); color: var(--ios-text); }
   .checkin-workbench-page .task-actions { flex-direction: row; align-items: stretch; }
   .checkin-workbench-page .task-actions button { width: auto; min-height: 44px; }
 }
+.completion-table { display: grid; gap: 1px; overflow-x: auto; border: 1px solid var(--ios-border); border-radius: 18px; background: var(--ios-border); }
+.completion-row { min-width: 680px; display: grid; grid-template-columns: minmax(160px,1.7fr) repeat(5,minmax(72px,.7fr)); align-items: center; gap: 12px; padding: 14px 16px; background: var(--ios-card); }
+.completion-row span,.completion-row strong { text-align: center; }.completion-head { color: var(--ios-secondary); background: #f8fafc; }
+.operation-group-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--ios-border); }
+.operation-group-row:last-child { border-bottom: 0; }.operation-group-row div { display: grid; gap: 3px; }.operation-group-row small { color: var(--ios-secondary); }
+.ios-metric-grid > article { min-height: 120px; display: grid; align-content: space-between; padding: 20px; border-radius: 22px; background: var(--ios-card); box-shadow: var(--ios-shadow); }

@@ -44,6 +44,17 @@ const newGroupDescription = ref('');
 const taskPreviewOpen = ref(false);
 const plannerStep = ref(1);
 const adminNav = ref(null);
+const checkinRows = ref([]);
+const checkinFilters = ref({ from: localDateKey(new Date(Date.now() - 6 * 86400000)), to: localDateKey(), user_id: '' });
+const checkinForm = ref({ user_id: '', task_type: 'daily_devotion', logical_date: localDateKey(), detail: '', note: '' });
+const completionStats = ref([]);
+const statisticsRange = ref({ from: localDateKey(new Date(Date.now() - 6 * 86400000)), to: localDateKey() });
+const groupSettings = ref({ group: { name: '', description: '' }, options: { retro_days: 30, show_group_summary: true, show_member_status: false, show_reflections: false, allow_member_ranking: false, site_title: '', home_message: '' } });
+const auditLogs = ref([]);
+const superOverview = ref(null);
+const superUsers = ref([]);
+const platformGroups = ref([]);
+const mergeUsers = ref({ primary_user_id: '', duplicate_user_id: '' });
 let adminNavMobileQuery = null;
 
 const libraryItems = computed(() => resourceLibrary.value.flatMap((section) => section.items || []));
@@ -130,8 +141,14 @@ const sections = computed(() => [
   { id: 'learning', label: '本周任务', icon: 'calendar' },
   { id: 'approvals', label: `注册审批${pendingRegistrationCount.value ? ` (${pendingRegistrationCount.value})` : ''}`, icon: 'check' },
   { id: 'members', label: '成员权限', icon: 'users' },
+  { id: 'checkins', label: '打卡记录', icon: 'check' },
   { id: 'library', label: '学习资源', icon: 'library' },
+  { id: 'statistics', label: '数据统计', icon: 'chart' },
+  { id: 'settings', label: '小组设置', icon: 'settings' },
+  { id: 'audit', label: '审计记录', icon: 'file' },
   ...(user.value?.is_super_admin ? [{ id: 'roster', label: '报名名单', icon: 'file' }] : []),
+  ...(user.value?.is_super_admin ? [{ id: 'accounts', label: '全体账号', icon: 'users' }] : []),
+  ...(user.value?.is_super_admin ? [{ id: 'operations', label: '系统运维', icon: 'database' }] : []),
   { id: 'data', label: '数据工具', icon: 'database' },
 ]);
 
@@ -266,11 +283,115 @@ async function removeMemberWithPending(member) {
   await withPending(key, () => removeMember(member));
 }
 
+async function loadCheckins() {
+  const params = new URLSearchParams({ from: checkinFilters.value.from, to: checkinFilters.value.to, page_size: '200' });
+  if (checkinFilters.value.user_id) params.set('user_id', checkinFilters.value.user_id);
+  const data = await api(`/checkins?${params}`);
+  checkinRows.value = data.items || [];
+}
+
+async function createAdminCheckin() {
+  const form = checkinForm.value;
+  if (!form.user_id || !form.logical_date) return toast('请选择成员和打卡日期');
+  await withPending('create-checkin', async () => {
+    try {
+      await api('/admin/checkins', { method: 'POST', body: JSON.stringify({ ...form, user_id: Number(form.user_id) }) });
+      form.detail = ''; form.note = '';
+      await loadCheckins();
+      toast('打卡已补录，并写入审计记录');
+    } catch (error) { toast(`补录失败：${error.message}`); }
+  });
+}
+
+async function deleteAdminCheckin(item) {
+  if (!await confirmDialog({ title: '纠正打卡记录', message: `确认撤销 ${item.logical_date} 的这条打卡吗？操作会保留审计记录。`, confirmLabel: '确认撤销', tone: 'danger' })) return;
+  await withPending(`delete-checkin-${item.id}`, async () => {
+    try { await api(`/admin/checkins/${item.id}`, { method: 'DELETE' }); await loadCheckins(); toast('记录已撤销'); }
+    catch (error) { toast(`撤销失败：${error.message}`); }
+  });
+}
+
+async function loadStatistics() {
+  const params = new URLSearchParams(statisticsRange.value);
+  const data = await api(`/admin/stats/completion?${params}`);
+  completionStats.value = data.items || [];
+}
+
+async function loadGroupSettings() {
+  const data = await api('/admin/group-settings');
+  groupSettings.value = { group: data.group || {}, options: { ...groupSettings.value.options, ...(data.options || {}) } };
+}
+
+async function saveGroupSettings() {
+  await withPending('save-group-settings', async () => {
+    try { await api('/admin/group-settings', { method: 'PUT', body: JSON.stringify({ ...groupSettings.value.group, options: groupSettings.value.options }) }); await reloadApp(); toast('小组设置已保存'); }
+    catch (error) { toast(`保存失败：${error.message}`); }
+  });
+}
+
+async function loadAuditLogs() {
+  const data = await api('/admin/audit-logs');
+  auditLogs.value = data.items || [];
+}
+
+async function resetMemberPassword(member) {
+  if (!await confirmDialog({ title: '重置临时密码', message: `确认重置 ${member.member_name || member.display_name} 的密码吗？该成员现有登录会失效。`, confirmLabel: '生成临时密码', tone: 'danger' })) return;
+  await withPending(`reset-password-${member.user_id}`, async () => {
+    try {
+      const data = await api(`/admin/users/${member.user_id}/reset-password`, { method: 'POST' });
+      await promptDialog({ title: '临时密码（仅显示这一次）', message: '请现在通过安全方式转交给成员；首次登录必须修改。', defaultValue: data.temporary_password, confirmLabel: '我已记录' });
+    } catch (error) { toast(`重置失败：${error.message}`); }
+  });
+}
+
+async function loadSuperData() {
+  const [overview, accounts, allGroups] = await Promise.all([api('/super-admin/overview'), api('/super-admin/users'), api('/super-admin/groups')]);
+  superOverview.value = overview;
+  superUsers.value = accounts.users || [];
+  platformGroups.value = allGroups.study_groups || [];
+}
+
+async function resetSuperUserPassword(account) {
+  await withPending(`super-reset-${account.id}`, async () => {
+    try {
+      const data = await api(`/super-admin/users/${account.id}/reset-password`, { method: 'POST' });
+      await promptDialog({ title: '临时密码（仅显示这一次）', message: `账号 @${account.username} 的旧登录已失效。`, defaultValue: data.temporary_password, confirmLabel: '我已记录' });
+    } catch (error) { toast(`重置失败：${error.message}`); }
+  });
+}
+
+async function mergeDuplicateUsers() {
+  const primary = Number(mergeUsers.value.primary_user_id);
+  const duplicate = Number(mergeUsers.value.duplicate_user_id);
+  if (!primary || !duplicate || primary === duplicate) return toast('请选择两个不同的普通账号');
+  const primaryAccount = superUsers.value.find(item => Number(item.id) === primary);
+  const duplicateAccount = superUsers.value.find(item => Number(item.id) === duplicate);
+  if (!await confirmDialog({ title: '合并重复账号', message: `保留 @${primaryAccount?.username}，把 @${duplicateAccount?.username} 的小组关系和历史数据并入后停用重复账号。若打卡冲突，系统会拒绝，不会覆盖记录。`, confirmLabel: '确认合并', tone: 'danger' })) return;
+  await withPending('merge-users', async () => {
+    try { await api('/super-admin/users/merge', { method: 'POST', body: JSON.stringify({ primary_user_id: primary, duplicate_user_id: duplicate }) }); mergeUsers.value = { primary_user_id: '', duplicate_user_id: '' }; await loadSuperData(); toast('重复账号已安全合并'); }
+    catch (error) { toast(`合并失败：${error.message}`); }
+  });
+}
+
+async function setGroupStatus(group, status) {
+  const verb = status ? '恢复' : '归档';
+  if (!await confirmDialog({ title: `${verb}小组`, message: `${verb}“${group.name}”？归档不会删除历史数据。`, confirmLabel: `确认${verb}`, tone: status ? 'default' : 'danger' })) return;
+  await withPending(`group-status-${group.id}`, async () => {
+    try { await api(`/super-admin/groups/${group.id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }); await Promise.all([reloadApp(), loadSuperData()]); toast(`小组已${verb}`); }
+    catch (error) { toast(`${verb}失败：${error.message}`); }
+  });
+}
+
 async function chooseSection(id) {
   setAdminSection(id);
   if (id === 'overview') await loadAdminData();
   if (id === 'approvals') await loadRegistrationRequests();
   if (id === 'roster') await loadRoster();
+  if (id === 'checkins') await loadCheckins();
+  if (id === 'statistics') await loadStatistics();
+  if (id === 'settings') await loadGroupSettings();
+  if (id === 'audit') await loadAuditLogs();
+  if (['accounts','operations'].includes(id)) await loadSuperData();
 }
 
 async function createStudyGroup() {
@@ -578,7 +699,7 @@ function selectResourceForTask(item) {
 
 onMounted(() => {
   if (user.value?.is_super_admin && !currentGroupID.value) setAdminSection('groups');
-  else if (!['groups','overview','learning','approvals','members','library','roster','data'].includes(adminSection.value)) setAdminSection('overview');
+  else if (!['groups','overview','learning','approvals','members','checkins','library','statistics','settings','audit','roster','accounts','operations','data'].includes(adminSection.value)) setAdminSection('overview');
   fetchRegistrationRequests().catch(() => {});
   adminNavMobileQuery = window.matchMedia('(max-width: 900px)');
   if (adminNavMobileQuery.addEventListener) adminNavMobileQuery.addEventListener('change', handleAdminNavViewportChange);
@@ -693,7 +814,45 @@ onBeforeUnmount(() => {
       <section v-else-if="adminSection === 'members'" class="ios-admin-page">
         <header class="ios-page-heading"><div><small>PEOPLE</small><h1>成员与权限</h1><p>成员通过报名名单注册；这里只管理本组权限。</p></div></header>
         <div class="ios-member-toolbar"><span>共 {{ members.length }} 位成员</span><span class="ios-info-chip">组长 {{ members.filter(m => m.roles?.includes('group_leader')).length }}</span><span class="ios-info-chip">管理员 {{ members.filter(m => m.roles?.includes('group_admin')).length }}</span></div>
-        <div class="ios-member-list"><article v-for="member in members" :key="member.member_id" class="ios-member-row"><img v-if="member.avatar_url" :src="member.avatar_url" :alt="member.member_name" /><span v-else class="member-avatar-fallback">{{ (member.member_name || member.display_name || '?').slice(0,1) }}</span><div class="member-copy"><b>{{ member.member_name || member.display_name }}</b><small>@{{ member.username }}</small></div><span class="ios-role" :class="roleLabel(member)">{{ roleLabel(member) }}</span><div class="member-row-actions"><button v-if="!member.is_super_admin && !member.roles?.includes('group_leader')" class="ios-text-button" :disabled="!!pendingAction" type="button" @click="changeMemberAdmin(member)">{{ isPending(`member-role-${member.member_id}`) ? '处理中…' : (member.roles?.includes('group_admin') ? '取消管理员' : '设为管理员') }}</button><button v-if="member.user_id !== user?.id && !member.is_super_admin && !member.roles?.includes('group_leader')" class="ios-text-danger" :disabled="!!pendingAction" type="button" @click="removeMemberWithPending(member)">{{ isPending(`remove-member-${member.member_id}`) ? '移出中…' : '移出本组' }}</button></div></article></div>
+        <div class="ios-member-list"><article v-for="member in members" :key="member.member_id" class="ios-member-row"><img v-if="member.avatar_url" :src="member.avatar_url" :alt="member.member_name" /><span v-else class="member-avatar-fallback">{{ (member.member_name || member.display_name || '?').slice(0,1) }}</span><div class="member-copy"><b>{{ member.member_name || member.display_name }}</b><small>@{{ member.username }}</small></div><span class="ios-role" :class="roleLabel(member)">{{ roleLabel(member) }}</span><div class="member-row-actions"><button v-if="member.user_id !== user?.id && !member.is_super_admin" class="ios-text-button" :disabled="!!pendingAction" type="button" @click="resetMemberPassword(member)">重置密码</button><button v-if="!member.is_super_admin && !member.roles?.includes('group_leader')" class="ios-text-button" :disabled="!!pendingAction" type="button" @click="changeMemberAdmin(member)">{{ isPending(`member-role-${member.member_id}`) ? '处理中…' : (member.roles?.includes('group_admin') ? '取消管理员' : '设为管理员') }}</button><button v-if="member.user_id !== user?.id && !member.is_super_admin && !member.roles?.includes('group_leader')" class="ios-text-danger" :disabled="!!pendingAction" type="button" @click="removeMemberWithPending(member)">{{ isPending(`remove-member-${member.member_id}`) ? '移出中…' : '移出本组' }}</button></div></article></div>
+      </section>
+
+      <section v-else-if="adminSection === 'checkins'" class="ios-admin-page">
+        <header class="ios-page-heading"><div><small>CHECK-INS</small><h1>打卡记录</h1><p>筛选、补录和纠错集中在一页，所有修改都会留下审计记录。</p></div></header>
+        <div class="ios-panel-grid">
+          <article class="ios-panel"><div class="panel-heading"><div><h2>筛选记录</h2><small>最多显示最近 200 条</small></div></div><div class="ios-form-grid"><label><span>开始日期</span><input v-model="checkinFilters.from" type="date" /></label><label><span>结束日期</span><input v-model="checkinFilters.to" type="date" /></label><label class="span-2"><span>成员</span><select v-model="checkinFilters.user_id"><option value="">全部成员</option><option v-for="member in members" :key="member.user_id" :value="member.user_id">{{ member.member_name || member.display_name }}</option></select></label><button type="button" :disabled="!!pendingAction" @click="loadCheckins">查询</button></div></article>
+          <article class="ios-panel"><div class="panel-heading"><div><h2>管理员补录</h2><small>可绕过成员补卡期限，但必须填写准确日期</small></div></div><div class="ios-form-grid"><label><span>成员</span><select v-model="checkinForm.user_id"><option value="">选择成员</option><option v-for="member in members" :key="member.user_id" :value="member.user_id">{{ member.member_name || member.display_name }}</option></select></label><label><span>日期</span><input v-model="checkinForm.logical_date" type="date" /></label><label><span>类型</span><select v-model="checkinForm.task_type"><option value="daily_devotion">每日灵修</option><option value="weekly_book">周读物</option><option value="weekly_video">本周视频</option><option value="weekly_verse">背经默写</option></select></label><label><span>说明</span><input v-model.trim="checkinForm.detail" placeholder="选填" /></label><label class="span-2"><span>得着（选填）</span><textarea v-model.trim="checkinForm.note" rows="2"></textarea></label><button class="span-2" type="button" :disabled="!checkinForm.user_id || !!pendingAction" @click="createAdminCheckin">确认补录</button></div></article>
+        </div>
+        <div class="ios-member-list"><article v-for="item in checkinRows" :key="item.id" class="ios-member-row"><span class="member-avatar-fallback">{{ item.logical_date.slice(8) }}</span><div class="member-copy"><b>{{ members.find(m => Number(m.user_id) === Number(item.user_id))?.member_name || `成员 #${item.user_id}` }}</b><small>{{ item.logical_date }} · {{ item.task_type }}<template v-if="item.detail"> · {{ item.detail }}</template></small></div><button class="ios-text-danger" type="button" :disabled="!!pendingAction" @click="deleteAdminCheckin(item)">撤销纠错</button></article><div v-if="!checkinRows.length" class="ios-empty">当前筛选范围没有打卡记录</div></div>
+      </section>
+
+      <section v-else-if="adminSection === 'statistics'" class="ios-admin-page">
+        <header class="ios-page-heading"><div><small>STATISTICS</small><h1>完成统计</h1><p>成员完成矩阵和未完成名单一眼可查。</p></div></header>
+        <article class="ios-panel"><div class="ios-form-grid"><label><span>开始日期</span><input v-model="statisticsRange.from" type="date" /></label><label><span>结束日期</span><input v-model="statisticsRange.to" type="date" /></label><button type="button" :disabled="!!pendingAction" @click="loadStatistics">刷新统计</button></div></article>
+        <div class="completion-table" role="table" aria-label="成员完成矩阵"><div class="completion-row completion-head" role="row"><b>成员</b><span>灵修</span><span>读物</span><span>视频</span><span>背经</span><strong>合计</strong></div><div v-for="item in completionStats" :key="item.user_id" class="completion-row" role="row"><b>{{ item.member_name }}</b><span>{{ item.daily_devotion }}</span><span>{{ item.weekly_book }}</span><span>{{ item.weekly_video }}</span><span>{{ item.weekly_verse }}</span><strong>{{ item.total }}</strong></div></div>
+      </section>
+
+      <section v-else-if="adminSection === 'settings'" class="ios-admin-page">
+        <header class="ios-page-heading"><div><small>GROUP SETTINGS</small><h1>小组设置</h1><p>只保留实际会用到的文案、补卡和隐私选项。</p></div></header>
+        <article class="ios-panel"><div class="ios-form-grid"><label><span>小组名称</span><input v-model.trim="groupSettings.group.name" /></label><label><span>允许补卡天数（0–90）</span><input v-model.number="groupSettings.options.retro_days" type="number" min="0" max="90" /></label><label class="span-2"><span>小组说明</span><textarea v-model.trim="groupSettings.group.description" rows="2"></textarea></label><label><span>网站标题</span><input v-model.trim="groupSettings.options.site_title" /></label><label><span>首页提示</span><input v-model.trim="groupSettings.options.home_message" /></label></div><div class="ios-toggle-grid"><label><input v-model="groupSettings.options.show_group_summary" type="checkbox" />允许成员看小组概览</label><label><input v-model="groupSettings.options.show_member_status" type="checkbox" />显示具体成员完成状态</label><label><input v-model="groupSettings.options.show_reflections" type="checkbox" />显示成员主动设为组内可见的得着</label><label><input v-model="groupSettings.options.allow_member_ranking" type="checkbox" />允许组内成员排行</label></div><button type="button" :disabled="!!pendingAction" @click="saveGroupSettings">保存小组设置</button></article>
+      </section>
+
+      <section v-else-if="adminSection === 'audit'" class="ios-admin-page">
+        <header class="ios-page-heading"><div><small>AUDIT</small><h1>审计记录</h1><p>管理员写操作不可在网页中删除。</p></div><button class="ios-secondary-button" type="button" @click="loadAuditLogs">刷新</button></header>
+        <div class="ios-member-list"><article v-for="item in auditLogs" :key="item.id" class="ios-member-row"><span class="member-avatar-fallback">{{ item.id }}</span><div class="member-copy"><b>{{ item.action }}</b><small>{{ item.created_at }} · 操作者 #{{ item.actor_user_id }} · {{ item.target_type }} #{{ item.target_id }}</small></div></article><div v-if="!auditLogs.length" class="ios-empty">暂无管理操作记录</div></div>
+      </section>
+
+      <section v-else-if="adminSection === 'accounts' && user?.is_super_admin" class="ios-admin-page">
+        <header class="ios-page-heading"><div><small>ACCOUNTS</small><h1>全体账号</h1><p>查询账号并进行单人密码重置，不再使用全员批量重置。</p></div></header>
+        <article class="ios-panel"><div class="panel-heading"><div><h2>合并重复账号</h2><small>保留主账号；发生打卡冲突时自动拒绝</small></div></div><div class="ios-form-grid"><label><span>保留账号</span><select v-model="mergeUsers.primary_user_id"><option value="">选择主账号</option><option v-for="account in superUsers.filter(item => !item.is_super_admin && item.status === 1)" :key="account.id" :value="account.id">{{ account.display_name }} (@{{ account.username }})</option></select></label><label><span>停用并合并</span><select v-model="mergeUsers.duplicate_user_id"><option value="">选择重复账号</option><option v-for="account in superUsers.filter(item => !item.is_super_admin && item.status === 1)" :key="account.id" :value="account.id">{{ account.display_name }} (@{{ account.username }})</option></select></label><button class="span-2 ios-danger-button" type="button" :disabled="!!pendingAction" @click="mergeDuplicateUsers">检查冲突并合并</button></div></article>
+        <div class="ios-member-list"><article v-for="account in superUsers" :key="account.id" class="ios-member-row"><span class="member-avatar-fallback">{{ (account.display_name || account.username).slice(0,1) }}</span><div class="member-copy"><b>{{ account.display_name }}</b><small>@{{ account.username }} · {{ account.status === 1 ? '正常' : '已停用' }}</small></div><span v-if="account.is_super_admin" class="ios-role">超级管理员</span><button v-else class="ios-text-button" type="button" :disabled="!!pendingAction || account.status !== 1" @click="resetSuperUserPassword(account)">重置临时密码</button></article></div>
+      </section>
+
+      <section v-else-if="adminSection === 'operations' && user?.is_super_admin" class="ios-admin-page">
+        <header class="ios-page-heading"><div><small>OPERATIONS</small><h1>系统运维</h1><p>平台容量概览；备份与恢复演练由 NAS 定时任务执行。</p></div></header>
+        <div v-if="superOverview" class="ios-metric-grid"><article><b>{{ superOverview.groups }}</b><small>启用小组</small></article><article><b>{{ superOverview.users }}</b><small>启用账号</small></article><article><b>{{ superOverview.today_checkins }}</b><small>今日打卡</small></article><article><b>{{ (superOverview.asset_bytes / 1048576).toFixed(1) }} MB</b><small>资料存储</small></article></div>
+        <article v-if="superOverview?.backup" class="ios-panel"><div class="panel-heading"><div><h2>最近备份</h2><small>{{ superOverview.backup.ok ? '备份成功' : '需要关注' }}</small></div><span class="ios-status" :class="{ active: superOverview.backup.ok }">{{ superOverview.backup.ok ? '正常' : '异常' }}</span></div><p>{{ superOverview.backup.finished_at || superOverview.backup.message || '尚无备份记录' }}</p></article>
+        <article class="ios-panel"><div class="panel-heading"><div><h2>小组归档</h2><small>归档不会删除成员、任务、打卡或资料</small></div></div><div class="group-card-list"><div v-for="group in platformGroups" :key="group.id" class="operation-group-row"><div><b>{{ group.name }}</b><small>{{ group.code }} · {{ group.status === 0 ? '已归档' : '运行中' }}</small></div><button class="ios-secondary-button" type="button" :disabled="!!pendingAction" @click="setGroupStatus(group, group.status === 0 ? 1 : 0)">{{ group.status === 0 ? '恢复' : '归档' }}</button></div></div></article>
       </section>
 
       <section v-else-if="adminSection === 'approvals'" class="ios-admin-page">

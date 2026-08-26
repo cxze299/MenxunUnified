@@ -5,6 +5,7 @@ import AppIcon from './AppIcon.vue';
 import SiteDialog from './SiteDialog.vue';
 import AdminConsole from './AdminConsole.vue';
 import { useAppStateStore } from '../stores/appState';
+import { confirmDialog } from '../ui/dialog';
 import {
   api, closeCalendar, login, logout, openCalendarMonth, registerAccount,
   loadPublicLibrary, previewLibraryItem, refreshCurrentUser, setDefaultGroupAction,
@@ -29,6 +30,7 @@ const registerGroupID = ref('');
 const registerUsername = ref('');
 const registerEmail = ref('');
 const registerPassword = ref('');
+const registerTermsAccepted = ref(false);
 const registrationPreview = ref(null);
 const profileUsername = ref('');
 const profileEmail = ref('');
@@ -45,6 +47,11 @@ const passwordSaving = ref(false);
 const activeResourceKey = ref('');
 const resourceSearch = ref('');
 const openingResource = ref('');
+const joinName = ref('');
+const joinGroupID = ref('');
+const joinTermsAccepted = ref(false);
+const joinSubmitting = ref(false);
+const joinNotice = ref('');
 
 const navigation = computed(() => [
   { id: 'home', label: '今日打卡', short: '打卡', icon: 'home' },
@@ -55,6 +62,7 @@ const navigation = computed(() => [
 ]);
 
 const activeGroup = computed(() => groups.value.find((group) => Number(group.id) === Number(currentGroupID.value)));
+const availableJoinGroups = computed(() => registrationGroups.value.filter((candidate) => !groups.value.some((memberGroup) => Number(memberGroup.id) === Number(candidate.id))));
 const activeResourceSection = computed(() => publicLibrary.value.find((section) => section.key === activeResourceKey.value) || publicLibrary.value[0] || null);
 const filteredResourceItems = computed(() => {
   const query = resourceSearch.value.trim().toLocaleLowerCase();
@@ -70,7 +78,7 @@ const pageMeta = computed(() => ({
   admin: ['管理后台', '管理任务、成员与学习资料'],
 })[tab.value] || ['', '']);
 
-watch(tab, (value) => { if (value === 'profile') syncProfile(); });
+watch(tab, (value) => { if (value === 'profile') { syncProfile(); loadRegistrationGroups(); } });
 watch(publicLibrary, (sections) => {
   if (!sections?.some((section) => section.key === activeResourceKey.value)) activeResourceKey.value = sections?.[0]?.key || '';
 }, { immediate: true });
@@ -102,6 +110,10 @@ function friendlyError(error) {
     avatar_required: '请先选择头像图片',
     avatar_failed: '头像处理失败，请更换图片后重试',
     register_failed: '账号创建失败，请稍后重试或联系管理员',
+    terms_required: '请先确认服务条款与隐私提示',
+    already_group_member: '你已经是该小组成员',
+    membership_apply_failed: '加入小组申请提交失败，请稍后重试',
+    too_many_attempts: '操作过于频繁，请稍后再试',
   })[code] || fallback || '操作失败，请稍后重试';
 }
 
@@ -111,6 +123,12 @@ async function chooseAuthMode(mode) {
     try { const data = await api('/auth/registration-groups'); registrationGroups.value = data.groups || []; }
     catch (error) { authError.value = friendlyError(error); }
   }
+}
+
+async function loadRegistrationGroups() {
+  if (registrationGroups.value.length) return;
+  try { const data = await api('/auth/registration-groups'); registrationGroups.value = data.groups || []; }
+  catch (_) { /* profile remains usable when the public group list is unavailable */ }
 }
 
 async function submitLogin() {
@@ -134,18 +152,33 @@ async function submitRegister() {
   if (authSubmitting.value) return;
   authError.value = '';
   if (!registrationPreview.value?.matched) return (authError.value = '请先确认姓名与门训组匹配');
+  if (!registerTermsAccepted.value) return (authError.value = '请先确认服务条款与隐私提示');
   if (!/^[a-z][a-z0-9._-]{2,63}$/.test(registerUsername.value.trim().toLowerCase())) return (authError.value = '登录账号需以小写字母开头，至少 3 位');
   if (registerPassword.value.length < 8 || !/[A-Za-z]/.test(registerPassword.value) || !/\d/.test(registerPassword.value)) return (authError.value = '密码至少 8 位，并同时包含字母和数字');
   authSubmitting.value = true;
   try {
-    const result = await registerAccount({ name: registerName.value, group_id: Number(registerGroupID.value), username: registerUsername.value, email: registerEmail.value, password: registerPassword.value });
+    const result = await registerAccount({ name: registerName.value, group_id: Number(registerGroupID.value), username: registerUsername.value, email: registerEmail.value, password: registerPassword.value, terms_accepted: registerTermsAccepted.value });
     loginIdentifier.value = result.username || registerUsername.value;
     authMode.value = 'login';
     authNotice.value = '注册申请已提交，请等待本组管理员审批。审批通过后即可登录。';
-    registerName.value = ''; registerGroupID.value = ''; registerUsername.value = ''; registerEmail.value = ''; registerPassword.value = ''; registrationPreview.value = null;
+    registerName.value = ''; registerGroupID.value = ''; registerUsername.value = ''; registerEmail.value = ''; registerPassword.value = ''; registerTermsAccepted.value = false; registrationPreview.value = null;
   }
   catch (error) { authError.value = friendlyError(error); }
   finally { authSubmitting.value = false; }
+}
+
+async function submitMembershipApply() {
+  if (joinSubmitting.value) return;
+  joinNotice.value = '';
+  if (!joinName.value.trim() || !joinGroupID.value) return toast('请填写名单姓名并选择目标小组');
+  if (!joinTermsAccepted.value) return toast('请先确认服务条款与隐私提示');
+  joinSubmitting.value = true;
+  try {
+    await api('/memberships/apply', { method: 'POST', body: JSON.stringify({ name: joinName.value, group_id: Number(joinGroupID.value), terms_accepted: true }) });
+    joinName.value = ''; joinGroupID.value = ''; joinTermsAccepted.value = false;
+    joinNotice.value = '加入小组申请已提交。目标小组管理员审批后，无需新账号即可切换进入。';
+  } catch (error) { toast(friendlyError(error)); }
+  finally { joinSubmitting.value = false; }
 }
 
 function syncProfile() { profileUsername.value = user.value?.username || ''; profileEmail.value = user.value?.email || ''; }
@@ -178,7 +211,7 @@ async function uploadAvatar() {
 
 async function changePassword() {
   if (passwordSaving.value) return;
-  if (newPassword.value.length < 8) return toast('新密码至少需要 8 位');
+  if (newPassword.value.length < 8 || !/[A-Za-z]/.test(newPassword.value) || !/\d/.test(newPassword.value)) return toast('新密码至少 8 位，并同时包含字母和数字');
   if (newPassword.value !== confirmPassword.value) return toast('两次输入的新密码不一致');
   passwordSaving.value = true;
   try {
@@ -191,6 +224,12 @@ async function changePassword() {
   }
   catch (error) { toast(friendlyError(error)); }
   finally { passwordSaving.value = false; }
+}
+
+async function logoutAllDevices() {
+  if (!await confirmDialog({ title: '退出所有设备', message: '这会让手机、电脑和其他浏览器中的登录全部失效，需要重新输入密码。', confirmLabel: '全部退出', tone: 'danger' })) return;
+  try { await api('/auth/logout-all', { method: 'POST' }); logout(); }
+  catch (error) { toast(friendlyError(error)); }
 }
 
 function resourceLabel(category) { return ({ book: '读物', passage: '课程读物', handout: '讲义', mentor: '导师资料', markdown: '文章', outline: '提纲', video: '视频' })[category] || '资料'; }
@@ -252,6 +291,7 @@ async function chooseCalendarDate(day) { if (!day || !calendar.value?.month) ret
           <label><span>登录账号</span><input v-model.trim="registerUsername" autocomplete="username" autocapitalize="none" placeholder="例如 zhangsan" /></label>
           <label><span>联系邮箱（选填）</span><input v-model.trim="registerEmail" autocomplete="email" type="email" placeholder="可用于找回账号" /></label>
           <label><span>密码</span><div class="ios-password-field"><input v-model="registerPassword" autocomplete="new-password" :type="showRegisterPassword ? 'text' : 'password'" placeholder="至少 8 位" /><button type="button" :aria-label="showRegisterPassword ? '隐藏密码' : '显示密码'" @click="showRegisterPassword = !showRegisterPassword">{{ showRegisterPassword ? '隐藏' : '显示' }}</button></div></label>
+          <label class="ios-consent-check"><input v-model="registerTermsAccepted" type="checkbox" /><span>我已阅读并同意服务条款与隐私提示，确认提交资料用于名单匹配和注册审批。</span></label>
           <button :disabled="authSubmitting || !registrationPreview?.matched" type="submit">{{ authSubmitting ? '正在提交…' : '提交注册申请' }}</button>
         </form>
       </template>
@@ -308,8 +348,9 @@ async function chooseCalendarDate(day) { if (!day || !calendar.value?.month) ret
 
         <section v-else-if="tab === 'profile'" class="ios-profile-page">
           <div class="ios-profile-hero"><div class="profile-photo-wrap"><img v-if="user?.avatar_url" :src="user.avatar_url" alt="个人头像" /><span v-else>{{ (user?.display_name || '?').slice(0,1) }}</span><label :class="{ busy: avatarUploading }" title="更换头像" tabindex="0"><AppIcon name="plus" :size="17" /><span class="sr-only">{{ avatarUploading ? '正在上传头像' : '选择新头像' }}</span><input ref="avatarInput" type="file" accept="image/jpeg,image/png" :disabled="avatarUploading" @change="uploadAvatar" /></label></div><div><small>MY PROFILE</small><h2>{{ user?.display_name }}</h2><p>{{ activeGroup?.name || '门训成员' }} · JPG/PNG 不超过 6MB</p></div></div>
-          <div class="ios-profile-grid"><article class="ios-panel"><div class="panel-heading"><div><small>ACCOUNT</small><h2>账号资料</h2></div></div><div class="ios-stack"><label><span>拼音用户名</span><input v-model="profileUsername" autocomplete="username" placeholder="小写字母开头" /></label><label><span>联系邮箱</span><input v-model="profileEmail" autocomplete="email" type="email" /></label><button :disabled="profileSaving" type="button" @click="saveProfile">{{ profileSaving ? '保存中…' : '保存资料' }}</button></div></article><article class="ios-panel"><div class="panel-heading"><div><small>SECURITY</small><h2>登录密码</h2></div></div><p class="panel-description">修改后会自动退出当前账号，请使用新密码重新登录。</p><div class="ios-stack"><label><span>当前密码</span><input v-model="oldPassword" autocomplete="current-password" type="password" /></label><label><span>新密码</span><input v-model="newPassword" autocomplete="new-password" type="password" placeholder="至少 8 位" /></label><label><span>确认新密码</span><input v-model="confirmPassword" autocomplete="new-password" type="password" /></label><button :disabled="passwordSaving" type="button" @click="changePassword">{{ passwordSaving ? '正在更新…' : '更新密码' }}</button></div></article></div>
-          <article class="ios-panel ios-session-panel"><div><small>CURRENT SESSION</small><h2>当前登录</h2><p>{{ user?.display_name }} · {{ activeGroup?.name || '未选择小组' }}</p></div><button class="ios-danger-button" type="button" @click="logout"><AppIcon name="logout" :size="18" />退出当前账号</button></article>
+          <div class="ios-profile-grid"><article class="ios-panel"><div class="panel-heading"><div><small>ACCOUNT</small><h2>账号资料</h2></div></div><div class="ios-stack"><label><span>拼音用户名</span><input v-model="profileUsername" autocomplete="username" placeholder="小写字母开头" /></label><label><span>联系邮箱（选填）</span><input v-model="profileEmail" autocomplete="email" type="email" /></label><button :disabled="profileSaving" type="button" @click="saveProfile">{{ profileSaving ? '保存中…' : '保存资料' }}</button></div></article><article class="ios-panel"><div class="panel-heading"><div><small>SECURITY</small><h2>登录密码</h2></div></div><p class="panel-description">修改后会自动退出当前账号。新密码至少 8 位，并同时包含字母和数字。</p><div class="ios-stack"><label><span>当前密码</span><input v-model="oldPassword" autocomplete="current-password" type="password" /></label><label><span>新密码</span><input v-model="newPassword" autocomplete="new-password" type="password" placeholder="至少 8 位，含字母和数字" /></label><label><span>确认新密码</span><input v-model="confirmPassword" autocomplete="new-password" type="password" /></label><button :disabled="passwordSaving" type="button" @click="changePassword">{{ passwordSaving ? '正在更新…' : '更新密码' }}</button></div></article></div>
+          <article class="ios-panel"><div class="panel-heading"><div><small>MULTI GROUP</small><h2>申请加入另一个小组</h2></div></div><p class="panel-description">使用目标小组 Excel 名单中的姓名提交。审批通过后继续使用当前账号，不会创建第二套密码。</p><div v-if="availableJoinGroups.length" class="ios-stack"><label><span>名单姓名</span><input v-model="joinName" placeholder="目标小组名单中的真实姓名" /></label><label><span>目标小组</span><select v-model="joinGroupID"><option value="">请选择</option><option v-for="group in availableJoinGroups" :key="group.id" :value="group.id">{{ group.name }}</option></select></label><label class="ios-consent-check"><input v-model="joinTermsAccepted" type="checkbox" /><span>我确认提交资料用于目标小组名单匹配与审批。</span></label><button :disabled="joinSubmitting" type="button" @click="submitMembershipApply">{{ joinSubmitting ? '正在提交…' : '提交加入申请' }}</button></div><div v-else class="ios-empty compact">当前没有可申请的新小组。</div><div v-if="joinNotice" class="ios-form-success">{{ joinNotice }}</div></article>
+          <article class="ios-panel ios-session-panel"><div><small>CURRENT SESSION</small><h2>当前登录</h2><p>{{ user?.display_name }} · {{ activeGroup?.name || '未选择小组' }}</p></div><div class="member-row-actions"><button class="ios-secondary-button" type="button" @click="logout"><AppIcon name="logout" :size="18" />退出当前账号</button><button class="ios-danger-button" type="button" @click="logoutAllDevices">退出所有设备</button></div></article>
         </section>
 
         <AdminConsole v-else-if="tab === 'admin' && canAdmin" />
