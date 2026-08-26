@@ -1,0 +1,794 @@
+{
+  "generated_at": "2026-08-26T05:35:48.0088552Z",
+  "mode": "read-only",
+  "sites": [
+    {
+      "source_site": "LongWay",
+      "root": "F:\\门训打卡网站\\LongWay",
+      "config_found": true,
+      "member_count": 17,
+      "task_week_count": 22,
+      "checkin_count": 0,
+      "earliest_date": null,
+      "latest_date": null,
+      "resource_count": 0,
+      "resource_bytes": 0,
+      "resources": []
+    },
+    {
+      "source_site": "agape",
+      "root": "F:\\门训打卡网站\\agape",
+      "config_found": true,
+      "member_count": 18,
+      "task_week_count": 11,
+      "checkin_count": 0,
+      "earliest_date": null,
+      "latest_date": null,
+      "resource_count": 5,
+      "resource_bytes": 16236952.0,
+      "resources": [
+        {
+          "path": "agape/Book/圣经救赎史剧综览-2.pdf",
+          "size": 8605432,
+          "sha256": "35c147037f77537da059c5d1868c7084a5e33186d639e1df89f6bc934780b261"
+        },
+        {
+          "path": "agape/Book/圣经救赎史剧综览-3.pdf",
+          "size": 4705175,
+          "sha256": "58cdd566911a7128b2e3bcc526ade691752b8fc377d8a8ab6fc0e3675da882bd"
+        },
+        {
+          "path": "agape/Mentor/圣经引言（上）内容概要.pdf",
+          "size": 1149181,
+          "sha256": "f517ca3ed4fbf3ae8f9481d390dc981888dad4d302ef21b1f16978299ca5576b"
+        },
+        {
+          "path": "agape/Mentor/圣经引言（下）内容概要.pdf",
+          "size": 1036899,
+          "sha256": "fbd465dc20e9f19e98e21d0925870c39bf152b05a16cebdc5fd25ab92b2dc69b"
+        },
+        {
+          "path": "agape/Mentor/圣经纵览的目的与价值.pdf",
+          "size": 740265,
+          "sha256": "ee770f583f203827b3b81399f31574d585fa65dc171803ad08105caf57e6b500"
+        }
+      ]
+    },
+    {
+      "source_site": "zk",
+      "root": "F:\\门训打卡网站\\zk",
+      "config_found": true,
+      "member_count": 16,
+      "task_week_count": 14,
+      "checkin_count": 552,
+      "earliest_date": "2026-04-06",
+      "latest_date": "2026-05-10",
+      "resource_count": 107,
+      "resource_bytes": 187210232.0,
+      "resources": [
+        {
+          "path": "zk/Passage/[B311]新约圣经-01-211209-圣经引言(上) .pdf",
+          "size": 3338444,
+          "sha256": "69572f0fa66988a2004daee67acc32a3bcb1d95dc68973202ab13ef933cb8557"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-02-190307-圣经引言(下) .pdf",
+          "size": 1938971,
+          "sha256": "4e70ae03d712353ada05a41578ed7a664496235a235711555d66259d60824d5d"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-03-220120-马太福音(上).pdf",
+          "size": 2714792,
+          "sha256": "2aba833dab33edd84070b309e0b93bff059f4e6e3cad25198206cfc8a11e035c"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-04-220120-马太福音(下) .pdf",
+          "size": 4550002,
+          "sha256": "d3300adfdfd7b4dc73464af2bc8121a321ade58ffb2f5874d3ae50a22106103e"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-05-220630-使徒行传(上).pdf",
+          "size": 2461387,
+          "sha256": "d3afa61e2ed2bb94d3d0d4b04b93b08344a015c6510b1adbaa51b146b9e30ac6"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-06-220630-使徒行传(下).pdf",
+          "size": 2969662,
+          "sha256": "0542bb63ba6af7b7f733ef6451f04ca5ca92155ddefd99d16fdf894a8291ec0d"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-07-220714-马可福音(上).pdf",
+          "size": 1981710,
+          "sha256": "01e4aac69f8478df32cbd402708c61665c7fe8115c32e614ad92a6067e558ec0"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-08-220714-马可福音(下).pdf",
+          "size": 3669758,
+          "sha256": "2f05d6f4e38e8242f743e0d2f13f095217cfb467a1928bbdc1d7aec885dc101c"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-09-220818-路加福音(上) .pdf",
+          "size": 2795139,
+          "sha256": "3b246eb6c016dfbe36cd4cd47a733d8138f6f5ec91e622e21570d2d394882c6a"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-10-220818-路加福音(下).pdf",
+          "size": 4918807,
+          "sha256": "7ebe08d377c6999c272f7eb3d5fdabfc625a300e12f9a15025190980b4d85fa0"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-11-220901-约翰福音(上).pdf",
+          "size": 3329453,
+          "sha256": "aa8bcc9fe75c89e27dd61cad76341bdfae2f9482337832f1573d9829e1abb605"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-12-220901-约翰福音(下).pdf",
+          "size": 3006036,
+          "sha256": "544fea47ab2f227d4f169a6951ed464f963f1ee7f1cf3b27af67e9312c85fb0f"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-13-221013-四福音合参(上) .pdf",
+          "size": 2159715,
+          "sha256": "1a5f763101441079c06974a13f888c72c960421baf66862ca27877c8821293c9"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-14-221013-四福音合参(下).pdf",
+          "size": 2179228,
+          "sha256": "db608ec116419365659746e11e58f9976b9ae7a50501a7463a670c28dbe13e3c"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-15-221103-保罗书信纵览(上) 待剪辑.pdf",
+          "size": 2262672,
+          "sha256": "c907660bdf74fa96ff97fd1fc94bc7b2b8eb4d54bd77d7439417bdc627862941"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-16-221103-保罗书信纵览(下) 待剪辑.pdf",
+          "size": 3773058,
+          "sha256": "ab9d592ff9f5ab40f6d342bd86e301cc3279204dfb5c61790c31dd751b41586d"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-17-221110-帖前(1) 待剪辑.pdf",
+          "size": 5392917,
+          "sha256": "8bb77904e35cfb46b5ce913b686dd697895663eb7db969525a959da2a1bb2800"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-18-230403-帖前(2) 待剪辑.pdf",
+          "size": 2183368,
+          "sha256": "8329e509e645057034b433ecec981d422facbdbe50a99f7e5ee0ad5d3745d25f"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-19-230403-帖前(3) 待剪辑.pdf",
+          "size": 1814997,
+          "sha256": "5dcfa8d1eda2d04be92e03b5306774bcc621409fa5918f7e58d15feb02868aa5"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-20-240321-帖后.pdf",
+          "size": 3274092,
+          "sha256": "64cce073e26104c6cddc30c4ab320ef9e04de253037749756c2eab82584828c2"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-21-240314-林前(上) .pdf",
+          "size": 2947666,
+          "sha256": "0ea3c9bdb06e7c66cd99630abce29d5969db83d1a1463ef2e59f64ce1f13cba5"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-22-240314-林前(下) .pdf",
+          "size": 3220703,
+          "sha256": "a20e14187d139a50b141d478cfb2c6a412b84001fb5227ea3a8bbdbd6fa2e6cc"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-23-240328-林后(1).pdf",
+          "size": 1990272,
+          "sha256": "3c346568cc0904d083cf9c2ec4392747b4f881989a24119305aa03cdaeb8cf18"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-24-240328-林后(2) .pdf",
+          "size": 2604551,
+          "sha256": "2fda367364f4036374932b226d46ae053acb82771630010b36d4d324426c8b74"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-25-240411-林后(3).pdf",
+          "size": 1701547,
+          "sha256": "5490bc2f0362fb5144010339f5e6023788ddd7a0a599ee57ef768fb54fb1eb51"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-26-240411-林后(4).pdf",
+          "size": 1129119,
+          "sha256": "db3001a74daf9ec2f09882b5fd39a7d87a3fdd32268dd60a030807902ac79693"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-27-240509-加拉太书(上).pdf",
+          "size": 2637443,
+          "sha256": "8e5b957c41a31559e5be659480757019f77ead7865a791c3a420d7bbd2452a6c"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-28-240509-加拉太书(中) .pdf",
+          "size": 4609248,
+          "sha256": "8c7b3369767d0f11a541d32610b62048a1659542b661e2c379cec0db711a25e2"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-29-240516-加拉太书(下) .pdf",
+          "size": 2304140,
+          "sha256": "c640bc5e9be7a1af52f44ef408094ebcf18626e6b6b77af146edb3fb1cd58dee"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-30-200910-罗马书(上).pdf",
+          "size": 1887758,
+          "sha256": "6358ad87b304b46f9df648965e9c427098a43fbaa3f406750fd8f1144f7b34b3"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-31-200910-罗马书(下).pdf",
+          "size": 1970615,
+          "sha256": "e272dff2e264c25f6c3729b8611e7e823393a067edf8f0964b29f89e11244a24"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-32-200917-歌罗西书.pdf",
+          "size": 2286345,
+          "sha256": "308c4e9b253678d99177ffd98b007ca78b2aeb78c6c4396fb8c1ad41e796d1ad"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-33-200917-以弗所书.pdf",
+          "size": 1549935,
+          "sha256": "98f6ce8a9f49c868ff106b684a5f13488f941d542690bd74b34bbaa616654148"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-34-201015-腓立比书(上).pdf",
+          "size": 3152921,
+          "sha256": "80254af7ebe583146d3aaf73bf244d83a21fb549434ff75c0e58e700f26db1a8"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-35-201029-腓立比书(下).pdf",
+          "size": 2943025,
+          "sha256": "ffdc63605c9eb9a1b5d58505df7f1fc08434db7377157fc91b7e1064434ae313"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-36-201029-腓利门书.pdf",
+          "size": 2745050,
+          "sha256": "75788f1d881b8b0faf22b4886cdad884645348e5ad207d8134633f0e05125d47"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-37-201105-保罗第四组书信.pdf",
+          "size": 2515122,
+          "sha256": "5c675a7434de7aee45927db7cdc5c616a7818aca894c25f170ba2d4a194fe2fd"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-38-201105-提摩太前书(含问答).pdf",
+          "size": 3211735,
+          "sha256": "a52c7f6a3736e06ab6304a1f3dabfc56f5cf4ecf8aa65de6e30793ac0c02f753"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-39-201112-提多书.pdf",
+          "size": 3210336,
+          "sha256": "5987b0591a9010a4ac792ffb2b8111d1c3d8b83a8d3f044920c4a11928468e35"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-40-201112-提摩太后书.pdf",
+          "size": 2630014,
+          "sha256": "957e1738d35587e1694aa965e0c356654bed3b67cc0f4d553566ee4ddf9cbf40"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-41-201119-希伯来书(上).pdf",
+          "size": 2796279,
+          "sha256": "162e73f6aadad9eb80d62c5eee797fa5d73b3085d6d99c3c30dded6dfeffb46e"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-42-201119-希伯来书(下).pdf",
+          "size": 2486140,
+          "sha256": "0ad5bdb90d4d490022cf4d880a3405900bf5c09e61b534afffd4400061167d57"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-43-201210-彼得前书.pdf",
+          "size": 3403826,
+          "sha256": "234bb572c9f6fdab358d7a64c4ddb32ff30583588d96c63641e8184fc5a17ddb"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-44-201210-彼得后书.pdf",
+          "size": 2785458,
+          "sha256": "7092753d354d6dc94b455408bacf62ba2a5242e378020666e4ee98183042d9f7"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-45-201224-雅各书.pdf",
+          "size": 4042578,
+          "sha256": "abbb9f28c996abdeb7d6e01c895deabad5a1f6c273916b1d3a7aa97cc3388924"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-46-210107-约翰壹书(上).pdf",
+          "size": 3070052,
+          "sha256": "3e44800d21dba0be230f56838b4ee4c79db1503f77aad2be87ec7affcf5227eb"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-47-210107-约翰壹书(下).pdf",
+          "size": 1720211,
+          "sha256": "23cbb7852955a8f505f9c82647c94c4d180e87834c0aaf7c23a77e00ece7e5e8"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-48-210114-约翰贰叁书.pdf",
+          "size": 3261999,
+          "sha256": "5fe1023522d8c88f5e38a952f2305a91ecf86f4654ad4c514f02bbb80ef03104"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-49-210114-犹大书.pdf",
+          "size": 3429331,
+          "sha256": "defff518de324d799a40c110ae669a5393260c8889f2f5799b67d3a9e185f6ed"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-50-210121-启示录(上).pdf",
+          "size": 2763833,
+          "sha256": "cb448048a08363c316364cc3adeea23f6ce82ae0b11875e3b12902b5e4a7a4f3"
+        },
+        {
+          "path": "zk/Passage/[B311]新约圣经-51-210121-启示录(下).pdf",
+          "size": 3404873,
+          "sha256": "a32768eb41ba721024208f5b69948f7f77e9af8bec555f36a1d27f1aff924988"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-01-211209-圣经引言(上)-讲义2.pdf",
+          "size": 778082,
+          "sha256": "8b34d4c823148e0a6022d5e7293b807f763105cb88e05198750d85b960611d82"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-02-190307-圣经引言(下)-讲义2.pdf",
+          "size": 716344,
+          "sha256": "1fa38eaffcfb41958f05143e3d95c4dadf5d9e594aed13ee2995d559ac081827"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-03-220120-马太福音(上)-讲义2.pdf",
+          "size": 627929,
+          "sha256": "ac64c187bcb20a59def9772329aac270314f6547e9f90b541bc2953b8cfdd20d"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-04-220120-马太福音(下)-讲义2.pdf",
+          "size": 615556,
+          "sha256": "bfca64ccf7792a1eebde636a5e0228510d11531ba967e8a6ce742165c42cc1e5"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-05-220630-使徒行传(上)-讲义2.pdf",
+          "size": 580693,
+          "sha256": "fcb4c8a950c8a4016087013a05b9c832e080768c848e75dc9602547e8c5b3731"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-06-220630-使徒行传(下)-讲义2.pdf",
+          "size": 592134,
+          "sha256": "bf4a9f2816f301cb2403fea0e59153fa49eaeb525054907aaec535b7ae12e71b"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-07-220714-马可福音(上)-讲义2.pdf",
+          "size": 679180,
+          "sha256": "164c2f61eca935d4e41a01070b37ea1d3c9821dce7e62280f89c8b9a63633511"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-08-220714-马可福音(下)-讲义2.pdf",
+          "size": 490886,
+          "sha256": "22cf6765d07b3eec636bb75fb5760c6d3015f7194a541774c3be840b24283a97"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-09-220818-路加福音(上)-讲义2.pdf",
+          "size": 529397,
+          "sha256": "a51c17acd27fc64b3e3c6d1021ff4abdfad90d998a76cd74e25f99c030e45dc7"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-10-220818-路加福音(下)-讲义2.pdf",
+          "size": 599165,
+          "sha256": "f1198913a5eba9ea79a53d4d4bcc3e0087622b634000280751ae0079366140ca"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-11-220901-约翰福音(上)-讲义2.pdf",
+          "size": 830381,
+          "sha256": "6d17129a27c3c6aaf743ccd93c04c4aafbafa54b43c859d4d0181f3ace4305aa"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-12-220901-约翰福音(下)-讲义2.pdf",
+          "size": 551575,
+          "sha256": "8b624903ce32487b14926288b8ce127bd7f3897629e920269e90abbac70d924b"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-13-221013-四福音合参(上)-讲义2.pdf",
+          "size": 676518,
+          "sha256": "a1eb03fe564d9f38a4da8ccf88ad9722d047c485613761577d15a969b28680f2"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-14-221013-四福音合参(下)-讲义2.pdf",
+          "size": 872075,
+          "sha256": "2a5919f5d2e12a0e5e4548b451301f57f5da20ccc310f876553853f257deab74"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-15-221103-保罗书信纵览(上)-讲义2.pdf",
+          "size": 848930,
+          "sha256": "dc1c971d86ac73c1949414704556320a31da059761268c37203eb73dbc782711"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-16-221103-保罗书信纵览(下)-讲义2.pdf",
+          "size": 1062579,
+          "sha256": "1d76b5c03e2678983d2c6374fc91f249278d7171155818095594b2317a858ddc"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-17-221110-帖前(1)-讲义2.pdf",
+          "size": 870174,
+          "sha256": "9ebb67d8bd48059ec2068248e29c2a853b6f4fbb3b8f4efdf211e08e9a13b063"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-18-230403-帖前(2)-讲义2.pdf",
+          "size": 869518,
+          "sha256": "98c385c6c9073f96b66d9ac16ea4a80468316c0e523b52f1c39b14597187c69e"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-19-230403-帖前(3)-讲义2.pdf",
+          "size": 870296,
+          "sha256": "5fc9a8e65f36ab60c587ee9d65635ffe1559f5b384e49053d2c0be768ef39b3b"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-20-240321-帖后-讲义2.pdf",
+          "size": 909048,
+          "sha256": "736fbdd5507a6e8d4fd932fc012672fccdd90872e861ca48d7e87d91d4d98427"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-21-240314-林前(上)-讲义2.pdf",
+          "size": 1120589,
+          "sha256": "8b4a503fc4e44181f87494c4bb6c375fc1f4e7eaa041d534f0ac0a38d58732da"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-22-240314-林前(下)-讲义2.pdf",
+          "size": 770387,
+          "sha256": "c1cb75b45e0fedc7fefa3743aa073b40d2179714b23be78f7d6c7ec592588f5a"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-23-240328-林后(1)-讲义2.pdf",
+          "size": 798073,
+          "sha256": "71c1dd3242f0573d5403a39de99faed7d74ad5b819e7c850789c151576ded1ed"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-24-240328-林后(2)-讲义2.pdf",
+          "size": 601848,
+          "sha256": "ca27fa9a0a2dd05b0710ff6f9fe00ae4c6fffb5d9a3ef4aa29ca0e0e562a105f"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-25-240411-林后(3)-讲义2.pdf",
+          "size": 919100,
+          "sha256": "35b64058fcbbd398913c7c40be59960c738e2a6eb738e5df03e2a60ec142f903"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-26-240411-林后(4)-讲义2.pdf",
+          "size": 627929,
+          "sha256": "098f125d8a15bbfeafadef4d249fb2e6f75a23b74669d2ba3c42793593b05df0"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-27-240509-加拉太书(上)-讲义2.pdf",
+          "size": 884763,
+          "sha256": "d75c92f75b45e023e8b9de3272e27c0703b3be922236a0358c7e893d8e87eeef"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-28-240509-加拉太书(中)-讲义2.pdf",
+          "size": 830824,
+          "sha256": "d0ebf25a7a005c12a32c2ce347a7dedfe4b35eb89d64f945b7837b05b317fcf7"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-29-240516-加拉太书(下)-讲义2.pdf",
+          "size": 1132067,
+          "sha256": "c6b1daa6a32419153f12edf5ce423f68268c31ca97e3d7cc2af7c1034c566db4"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-30-200910-罗马书(上)-讲义2.pdf",
+          "size": 859840,
+          "sha256": "4368f2f09040ee76bcd4e667748987df9862a3e6d91abf732738eec7bb8e8b19"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-31-200910-罗马书(下)-讲义2.pdf",
+          "size": 792293,
+          "sha256": "acb4b83ef5f0bad0932f08bd1e6c1423e392091230fdf8c3cb32965df5d88b83"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-32-200917-歌罗西书-讲义2.pdf",
+          "size": 644987,
+          "sha256": "f948a67ff4ee7b42e2844b7d2a75cf8d3f9be5e74c8aaecdf7c464eabcc38363"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-33-200917-以弗所书-讲义2.pdf",
+          "size": 660559,
+          "sha256": "24086124a13e7f9fe1d4b9e5c768aa54e2046b27a2449a14c0cf566ff9b125c1"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-34-201015-腓立比书(上)-讲义2.pdf",
+          "size": 785326,
+          "sha256": "60797f2c418e9ab9ebb51229654e9b57eccbf49be8e175790924f36e509063c6"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-35-201029-腓立比书(下)-讲义2.pdf",
+          "size": 659073,
+          "sha256": "39e1fc9100d7805083d16a8d0c0cf468d35f7673e3b256ac0c16177f3b39200f"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-36-201029-腓利门书-讲义2.pdf",
+          "size": 611509,
+          "sha256": "b8867e006ab619aef2634f3504901d78570a85246ec3ebc8e73e0af6094a6aae"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-37-201105-保罗第四组书信-讲义2.pdf",
+          "size": 793406,
+          "sha256": "34525a2fd96c11a13d139668b8101eb8ed60ac9075ec5303e268d5a09644a01c"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-38-201105-提摩太前书-讲义2.pdf",
+          "size": 667710,
+          "sha256": "1a94254c09f7f34f51ff9e3714321a62cdb813d04fc25eb48b1de74b7eab14a9"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-39-201112-提多书-讲义2.pdf",
+          "size": 834446,
+          "sha256": "d93189d2c14390d12100f0aad919f3b3fdb5c65c15910546d4aaee1f564514ea"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-40-201112-提摩太后书-讲义2.pdf",
+          "size": 646696,
+          "sha256": "d810081899050ffc4e7b4f96306b37c4d902545c2f21411fe63ceb8f51d7a440"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-41-201119-希伯来书(上)-讲义2.pdf",
+          "size": 755349,
+          "sha256": "3ea6a4f4cf0d8354c0fac2af581668027d9fddd22783d3fbd86dd0d321788ac5"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-42-201119-希伯来书(下)-讲义2.pdf",
+          "size": 628406,
+          "sha256": "c4547c7e5b09209aa3c78889af49fdaf1d9dc232631559de9d5e587891194d96"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-43-201210-彼得前书-讲义2.pdf",
+          "size": 891657,
+          "sha256": "7b2e9c850e5fe55ae418ecf5498e2abac094e12dc333e93afbe4e0039994e47d"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-44-201210-彼得后书-讲义2.pdf",
+          "size": 566296,
+          "sha256": "6154a7277bf31c617ca469151eda925b2f105fb00561d2394f9f23250fce9bd2"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-45-201224-雅各书-讲义2.pdf",
+          "size": 714387,
+          "sha256": "b02faf730f18b4bd8eb41e289dc556830ccca0f44b25942e921b8491a3a2d2d6"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-46-210107-约翰壹书(上)-讲义2.pdf",
+          "size": 574968,
+          "sha256": "7f180e22abe6b3a978d026c31fd735e5619902619db25ef6c668ed5019680f17"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-47-210107-约翰壹书(下)-讲义2.pdf",
+          "size": 502351,
+          "sha256": "c4473fe889ea3d6f6f10baad41587047505ac25fb758a30778577c05af12c58d"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-48-210114-约翰贰叁书-讲义2.pdf",
+          "size": 584945,
+          "sha256": "740cd0ce389802bb99dd7d51bf90ba10c1d264d2867af9eb67d9cbca6b3b77e5"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-49-210114-犹大书-讲义2.pdf",
+          "size": 579088,
+          "sha256": "60ab57bdfc50177ee3434aea2330a48f6a5a87a4c39694042444e7128ca8d41c"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-50-210121-启示录(上)-讲义2.pdf",
+          "size": 839015,
+          "sha256": "5f105b362ea4bf16ec2e94ad9a3a8276bbf6732844da4b04d0fc13c534a29d9b"
+        },
+        {
+          "path": "zk/PPT/[B311]新约圣经-51-210121-启示录(下)-讲义2.pdf",
+          "size": 801461,
+          "sha256": "ff6c16c69e696753acc846cc5d7d2235be57ee0740a57888c736370ff03e1220"
+        },
+        {
+          "path": "zk/Mentor/马太福音（上）导读.pdf",
+          "size": 744018,
+          "sha256": "98c51a4658c24fafbf64c468a2e90cec56fa7736aa09e5f40572b5ee3cd6eb25"
+        },
+        {
+          "path": "zk/Mentor/马太福音（下）导读.pdf",
+          "size": 763728,
+          "sha256": "d7fa8fab11d5dc88e28a0ff02a32b4f31dda8988a73df21e505769851d760358"
+        },
+        {
+          "path": "zk/Mentor/圣经引言（上）内容概要.pdf",
+          "size": 1149181,
+          "sha256": "f517ca3ed4fbf3ae8f9481d390dc981888dad4d302ef21b1f16978299ca5576b"
+        },
+        {
+          "path": "zk/Mentor/圣经引言（下）内容概要.pdf",
+          "size": 1036899,
+          "sha256": "fbd465dc20e9f19e98e21d0925870c39bf152b05a16cebdc5fd25ab92b2dc69b"
+        },
+        {
+          "path": "zk/Mentor/圣经纵览的目的与价值.pdf",
+          "size": 740265,
+          "sha256": "ee770f583f203827b3b81399f31574d585fa65dc171803ad08105caf57e6b500"
+        }
+      ]
+    },
+    {
+      "source_site": "zwlingyi",
+      "root": "F:\\门训打卡网站\\zwlingyi",
+      "config_found": true,
+      "member_count": 21,
+      "task_week_count": 23,
+      "checkin_count": 0,
+      "earliest_date": null,
+      "latest_date": null,
+      "resource_count": 23,
+      "resource_bytes": 45088041.0,
+      "resources": [
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-01-190321-生命纵览R.pdf",
+          "size": 2013148,
+          "sha256": "4ef45feeabab6512bd6973290275bf30b7781a70eae72276323c34dbe96b7118"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-02- 03-190321-宝血与十字架R.pdf",
+          "size": 1472228,
+          "sha256": "36ee5aec8c9cb932050ca4c6fd7b532d8e997e8752cf6ee9d382e31d5b316114"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-04-190425-长进的途径-计算.pdf",
+          "size": 1598761,
+          "sha256": "984339980e063f101a42c754ab77af032e39ddc565208bc169e63d47c14030d6"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-05-190425-十字架的分界..pdf",
+          "size": 1351290,
+          "sha256": "3b40b8394ee0449399c294a980cab7a8614f2bd360eb2c481c249657441e786c"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-06-190425-长进的途径-奉献.pdf",
+          "size": 1058069,
+          "sha256": "b69147d9c0add8ce13f2d7650c4de93f80ef4fee53e25f92b385130883cb7f35"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-07-190620-神永远的旨意.pdf",
+          "size": 1784763,
+          "sha256": "5a71575a8c7708704efec8fac0715460af3d65559c3d6db086fd2b1f11d8ccd5"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-08-190620-圣灵.pdf",
+          "size": 2160009,
+          "sha256": "1bdbfab10cf932018dc88df23a536be500d2ec45594fa6ae7a8e974fd8f07dd3"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-09-190718-罗马书第七章(上).pdf",
+          "size": 3466047,
+          "sha256": "603a12074f4affdc419599914da5f204e82e5a3b164fecc4cad4c00c875455a2"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-10-190718-罗马书第七章(下).pdf",
+          "size": 1822835,
+          "sha256": "a06fe63db67e65b9fafa7b2404f729a0a6d0a7c2e0b91c6d7f73a1d9ead660d8"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-11-190718-长进-随从圣灵.pdf",
+          "size": 1994355,
+          "sha256": "23a5b3084c603dacbb0f198a535d3a5e7980255b3fff86af0d6d34473e85f494"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-12-190912-生命圣灵的律.pdf",
+          "size": 1688542,
+          "sha256": "55fb45b11fe1096172be91dc508b8be5e5a7551c7c9d0787b39cf1ad5ad0d7d2"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-13-191024-在基督里成为一身(上).pdf",
+          "size": 1921774,
+          "sha256": "37c2674f712f325c2b3bfba500b7016aba6e8cd2750f54299262da38d47af604"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-14-191024-在基督里成为一身(下).pdf",
+          "size": 1659584,
+          "sha256": "588a7b37e59ecab60320b013f62c3cf79d34b27becd14367d0774e88caa04f6b"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-15-191031-在基督里成为一身(下).pdf",
+          "size": 4271315,
+          "sha256": "b61d45e8242101b746d6785c5b26a3842efa7b0e570d3e10cfc897275f1b9d59"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-16-191031-十字架与魂生命(上).pdf",
+          "size": 948775,
+          "sha256": "489017dd0dd35415f64ef637cdbc5f9b32fd45af2a664b4a68655839dae8feba"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-17-十字架与生命的路.pdf",
+          "size": 1599582,
+          "sha256": "25cf3a86c4cec7bb150f673065ec98bd6bfcec601e091d52e63eed5410943267"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-18-十字架与魂生命(中).pdf",
+          "size": 1357836,
+          "sha256": "ded3aa6d5cb9f03e043302f70192c98d9dc38d5e47416b7bc2ed8de4d2402d8e"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-19-十字架与魂生命（下）.docx.pdf",
+          "size": 1626471,
+          "sha256": "a1d12d87ad4aa6735c1b3decaf947e41d1fea798a7566d84620fc4be83d44070"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-20-基督是我们的生命（补充).pdf",
+          "size": 965863,
+          "sha256": "f6374544d133f792338ff70118f8344df43430fb9144e9ad58c1fd35b34e4277"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-21-长进的途径-背十字架（上）.pdf",
+          "size": 3102873,
+          "sha256": "ec3a063d3313d6b0a4d8cd12c7d70945a69b8739b266b0a469fc1747a6af801f"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-22-长进的途径-背十字架(下).pdf",
+          "size": 2750076,
+          "sha256": "cd0af9a309a63dc4e20db34e0a919941c9c522fdac1469788d9a28415a23ff2e"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-23-福音的目的（上）.pdf",
+          "size": 2884012,
+          "sha256": "cfdb41781b93d3cabf1403725cfeed3b49be8e8c181ed43b76d2b9cb60f6d0dd"
+        },
+        {
+          "path": "zwlingyi/Passage/[L311]生命之道-24-福音的目的（下）.pdf",
+          "size": 1589833,
+          "sha256": "bdfe937ca1ee06d6969690fb29401a6c767f71e805aec9e78cfa2b34e730450f"
+        }
+      ]
+    },
+    {
+      "source_site": "zwmouss",
+      "root": "F:\\门训打卡网站\\zwmouss",
+      "config_found": true,
+      "member_count": 24,
+      "task_week_count": 23,
+      "checkin_count": 672,
+      "earliest_date": null,
+      "latest_date": null,
+      "resource_count": 2,
+      "resource_bytes": 2.0,
+      "resources": [
+        {
+          "path": "zwmouss/Passage/.gitkeep",
+          "size": 1,
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+        },
+        {
+          "path": "zwmouss/PPT/.gitkeep",
+          "size": 1,
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+        }
+      ]
+    }
+  ],
+  "duplicate_resources": [
+    {
+      "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "copies": 2,
+      "paths": [
+        "zwmouss/Passage/.gitkeep",
+        "zwmouss/PPT/.gitkeep"
+      ]
+    },
+    {
+      "sha256": "ee770f583f203827b3b81399f31574d585fa65dc171803ad08105caf57e6b500",
+      "copies": 2,
+      "paths": [
+        "agape/Mentor/圣经纵览的目的与价值.pdf",
+        "zk/Mentor/圣经纵览的目的与价值.pdf"
+      ]
+    },
+    {
+      "sha256": "f517ca3ed4fbf3ae8f9481d390dc981888dad4d302ef21b1f16978299ca5576b",
+      "copies": 2,
+      "paths": [
+        "agape/Mentor/圣经引言（上）内容概要.pdf",
+        "zk/Mentor/圣经引言（上）内容概要.pdf"
+      ]
+    },
+    {
+      "sha256": "fbd465dc20e9f19e98e21d0925870c39bf152b05a16cebdc5fd25ab92b2dc69b",
+      "copies": 2,
+      "paths": [
+        "agape/Mentor/圣经引言（下）内容概要.pdf",
+        "zk/Mentor/圣经引言（下）内容概要.pdf"
+      ]
+    }
+  ]
+}
